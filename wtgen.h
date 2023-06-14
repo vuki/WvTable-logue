@@ -74,7 +74,7 @@ typedef struct {
     srate: sampling rate in Hz
     ovs_mode: oversampling mode
 */
-void wtgen_init(WtGenState* state, float srate, OvsMode ovs_mode)
+void wtgen_init(WtGenState* __restrict state, float srate, OvsMode ovs_mode)
 {
     if (ovs_mode == OVS_4x)
         state->srate = srate * 4.f;
@@ -106,23 +106,78 @@ void wtgen_init(WtGenState* state, float srate, OvsMode ovs_mode)
     // ramp_init(&state->wave_ramp);
 }
 
-_INLINE float wt_generate_(WtGenState* __restrict state)
+/*  wtgen_set_wave
+    Set the wave number for the main oscillator
+    nwave: wave number, float 0..127
+*/
+_INLINE void wtgen_set_wave(WtGenState* __restrict state, float nwave)
 {
-    float alpha[2];
-    float y = 0;
-    uint8_t k;
-    uint8_t ipos = (uint8_t)state->osc[0].phase;
-    alpha[1] = state->osc[0].phase - ipos;
-    alpha[0] = 1.f - alpha[1];
-    const uint8_t* p_wave = &WAVES[state->osc[0].wave1][0];
-    for (k = 0; k < 2; k++, ipos++) {
-        if (alpha[k])
-            y += alpha[k] * (int8_t)(((ipos & 0x40) ? (~p_wave[~ipos & 0x3F]) : (p_wave[ipos & 0x3F])) ^ 0x80);
+    state->osc[0].req_wave = nwave;
+    // defer actual wave number setting to the generation stage
+    state->base_wave[0] = nwave;
+}
+
+/*  wtgen_set_sub_wave
+    Set the wave number for the sub oscillator
+    nwave: wave number, float 0..127
+*/
+_INLINE void wtgen_set_sub_wave(WtGenState* __restrict state, float nwave)
+{
+    state->osc[1].req_wave = nwave;
+    // defer actual wave number setting to the generation stage
+    state->base_wave[1] = nwave;
+}
+
+/*  set_wave_number
+    Set the wave number
+    nwave: requested wave number (float)
+*/
+_INLINE void set_wave_number(WtState* __restrict state, float nwave)
+{
+    if (state->set_wave == nwave)
+        return; // already set
+    state->set_wave = nwave;
+    const uint8_t old_wtn = state->wtn;
+    while (nwave >= 128.f)
+        nwave -= 128.f;
+    while (nwave < 0)
+        nwave += 128.f;
+    if (state->retro_mode)
+        nwave = (float)((uint8_t)nwave); // only integers
+    if (nwave < 64.f) {
+        state->wtn = state->ntable;
+    } else {
+        state->wtn = state->use_upper ? WT_UPPER : state->ntable;
+        nwave -= 64.f;
     }
-    state->osc[0].phase += state->osc[0].step;
-    if (state->osc[0].phase > MAXPHASE)
-        state->osc[0].phase -= MAXPHASE;
-    return y * 0.0078125; // y/128
+    if (nwave == state->nwave && state->wtn == old_wtn)
+        return; // same wave and wavetable
+    if (state->wtn != old_wtn)
+        state->wt_def_pos = 0;
+    if (nwave < STANDARD_WAVES && state->wtn != WT_SYNC && state->wtn != WT_STEP) {
+        // select from stored waves
+        const uint8_t(*wt_def)[2] = &WT_POS[WT_IDX[state->wtn]];
+        while (nwave > wt_def[state->wt_def_pos + 1][0])
+            state->wt_def_pos++;
+        while (nwave < wt_def[state->wt_def_pos][0])
+            state->wt_def_pos--;
+        state->wave1 = wt_def[state->wt_def_pos][1];
+        state->wave2 = wt_def[state->wt_def_pos + 1][1];
+        if (nwave < LAST_MEM_WAVE) {
+            const uint8_t denom = wt_def[state->wt_def_pos + 1][0] - wt_def[state->wt_def_pos][0] - 1;
+            state->alpha_w = (nwave - wt_def[state->wt_def_pos][0]) * WSCALER[denom];
+        } else {
+            state->alpha_w = nwave - LAST_MEM_WAVE;
+        }
+    } else if ((state->wtn == WT_SYNC || state->wtn == WT_STEP) && nwave < LAST_MEM_WAVE) {
+        state->alpha_w = 0;
+    } else {
+        const uint8_t nw = (uint8_t)nwave;
+        state->wave1 = nw - STANDARD_WAVES + NWAVES;
+        state->wave2 = (nw < 63) ? state->wave1 + 1 : WT_POS[WT_IDX[state->wtn]][1];
+        state->alpha_w = nwave - nw;
+    }
+    state->nwave = nwave;
 }
 
 _INLINE float wt_generate(WtGenState* __restrict state)
@@ -130,6 +185,13 @@ _INLINE float wt_generate(WtGenState* __restrict state)
     static uint8_t nwave[8]; // wave numbers
     static uint8_t ipos[8]; // integer sample positions
     static float scaler[8]; // scaler values
+
+    uint8_t k = 0;
+    for (k = 0; k < 2; k++) {
+        if (state->osc[k].set_wave != state->osc[k].req_wave) {
+            set_wave_number(&state->osc[k], state->osc[k].req_wave);
+        }
+    }
 
     // wave numbers
     nwave[0] = nwave[1] = state->osc[0].wave1;
@@ -164,7 +226,6 @@ _INLINE float wt_generate(WtGenState* __restrict state)
 
     // the generation loop
     float y = 0;
-    uint8_t k = 0;
     for (k = 0; k < 8; k++) {
         if (scaler[k]) {
             // here, check what kind of wave to generate

@@ -8,7 +8,7 @@ typedef struct {
     int32_t shape_lfo;
     float sub_freq_ratio;
     struct {
-        uint16_t osc_wave;
+        uint16_t main_wave;
         uint16_t sub_wave;
         uint16_t wavetable;
         uint16_t sub_mix;
@@ -40,18 +40,7 @@ void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
-
     wtgen_init(&g_gen_state, k_samplerate, OVS_NONE);
-    // g_gen_state.srate = k_samplerate;
-    // g_gen_state.phase_scaler = 128.f / g_gen_state.srate;
-    // # TESTING
-    g_gen_state.osc[0].wave1 = 54;
-    g_gen_state.osc[0].wave2 = 55;
-    g_gen_state.osc[1].wave1 = 51;
-    g_gen_state.osc[1].wave2 = 52;
-    g_gen_state.osc[0].alpha_w = 0.5f;
-    g_gen_state.osc[1].alpha_w = 0.3f;
-    g_gen_state.sub_mix = 0.f;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t frames)
@@ -89,9 +78,15 @@ void OSC_PARAM(uint16_t index, uint16_t value)
 
     switch (index) {
     case k_user_osc_param_id1:
+        // Param1: main osc wave number
+        g_osc_params.newpar.main_wave = value;
+        wtgen_set_wave(&g_gen_state, (float)value); // # TEST
         break;
 
     case k_user_osc_param_id2:
+        // Param1: sub osc wave number
+        g_osc_params.newpar.sub_wave = value;
+        wtgen_set_sub_wave(&g_gen_state, (float)value); // # TEST
         break;
 
     case k_user_osc_param_id3:
