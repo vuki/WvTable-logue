@@ -32,7 +32,7 @@ __fast_inline void update_frequency(uint16_t pitch)
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
     }
     g_gen_state.osc[0].step = g_gen_state.phase_scaler * freq;
-    g_gen_state.osc[1].step = g_gen_state.osc[0].step; // # TEMP - apply detune
+    g_gen_state.osc[1].step = g_gen_state.osc[0].step * 0.5; // # TEMP - apply detune
     g_osc_params.pitch = pitch;
 }
 
@@ -41,12 +41,17 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     (void)platform;
     (void)api;
 
-    g_gen_state.srate = k_samplerate;
-    g_gen_state.phase_scaler = 128.f / g_gen_state.srate;
+    wtgen_init(&g_gen_state, k_samplerate, OVS_NONE);
+    // g_gen_state.srate = k_samplerate;
+    // g_gen_state.phase_scaler = 128.f / g_gen_state.srate;
+    // # TESTING
     g_gen_state.osc[0].wave1 = 54;
     g_gen_state.osc[0].wave2 = 55;
-    g_gen_state.osc[0].step = 0;
-    g_osc_params.pitch = 0;
+    g_gen_state.osc[1].wave1 = 51;
+    g_gen_state.osc[1].wave2 = 52;
+    g_gen_state.osc[0].alpha_w = 0.5f;
+    g_gen_state.osc[1].alpha_w = 0.3f;
+    g_gen_state.sub_mix = 0.f;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t frames)
@@ -102,6 +107,9 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         break;
 
     case k_user_osc_param_shape:
+        // Shape: sub oscillator mix
+        g_osc_params.newpar.sub_mix = value;
+        g_gen_state.sub_mix = (float)value * 0.0009765625f; // 1/1024
         break;
 
     case k_user_osc_param_shiftshape:

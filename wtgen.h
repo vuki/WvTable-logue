@@ -106,7 +106,7 @@ void wtgen_init(WtGenState* state, float srate, OvsMode ovs_mode)
     // ramp_init(&state->wave_ramp);
 }
 
-_INLINE float wt_generate(WtGenState* __restrict state)
+_INLINE float wt_generate_(WtGenState* __restrict state)
 {
     float alpha[2];
     float y = 0;
@@ -123,6 +123,66 @@ _INLINE float wt_generate(WtGenState* __restrict state)
     if (state->osc[0].phase > MAXPHASE)
         state->osc[0].phase -= MAXPHASE;
     return y * 0.0078125; // y/128
+}
+
+_INLINE float wt_generate(WtGenState* __restrict state)
+{
+    static uint8_t nwave[8]; // wave numbers
+    static uint8_t ipos[8]; // integer sample positions
+    static float scaler[8]; // scaler values
+
+    // wave numbers
+    nwave[0] = nwave[1] = state->osc[0].wave1;
+    nwave[2] = nwave[3] = state->osc[0].wave2;
+    nwave[4] = nwave[5] = state->osc[1].wave1;
+    nwave[6] = nwave[7] = state->osc[1].wave2;
+
+    // sample positions and sample scalers
+    ipos[0] = ipos[2] = (uint8_t)state->osc[0].phase;
+    ipos[1] = ipos[3] = ipos[0] + 1; // auto wrap
+    ipos[4] = ipos[6] = (uint8_t)state->osc[1].phase;
+    ipos[5] = ipos[7] = ipos[4] + 1;
+    const float asA = state->osc[0].phase - ipos[0];
+    const float masA = 1.f - asA;
+    const float asB = state->osc[1].phase - ipos[4];
+    const float masB = 1.f - asB;
+
+    // other scalers (1-alpha)
+    const float mawA = 1.f - state->osc[0].alpha_w;
+    const float mawB = 1.f - state->osc[1].alpha_w;
+    const float mamix = 1.f - state->sub_mix;
+
+    // all scalers
+    scaler[0] = mamix * mawA * masA;
+    scaler[1] = mamix * mawA * asA;
+    scaler[2] = mamix * state->osc[0].alpha_w * masA;
+    scaler[3] = mamix * state->osc[0].alpha_w * asA;
+    scaler[4] = state->sub_mix * mawB * masB;
+    scaler[5] = state->sub_mix * mawB * asB;
+    scaler[6] = state->sub_mix * state->osc[1].alpha_w * masB;
+    scaler[7] = state->sub_mix * state->osc[1].alpha_w * asB;
+
+    // the generation loop
+    float y = 0;
+    uint8_t k = 0;
+    for (k = 0; k < 8; k++) {
+        if (scaler[k]) {
+            // here, check what kind of wave to generate
+            if (nwave[k] < NWAVES)
+                // assuming a memory wave:
+                y += scaler[k]
+                    * (int8_t)(((ipos[k] & 0x40) ? (~WAVES[nwave[k]][~ipos[k] & 0x3F])
+                                                 : (WAVES[nwave[k]][ipos[k] & 0x3F]))
+                        ^ 0x80);
+        }
+    }
+
+    for (k = 0; k < 2; k++) {
+        state->osc[k].phase += state->osc[k].step;
+        if (state->osc[k].phase > MAXPHASE)
+            state->osc[k].phase -= MAXPHASE;
+    }
+    return y * 0.0078125;
 }
 
 #endif
