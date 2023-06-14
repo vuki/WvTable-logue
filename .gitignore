@@ -1,0 +1,7 @@
+build
+*.exe
+*.mnlgxdunit
+*.bak
+*.*_
+ttt.*
+*.ttt

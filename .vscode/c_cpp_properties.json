@@ -1,0 +1,36 @@
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/../../c",
+                "${workspaceFolder}/../logue-sdk/platform/inc",
+                "${workspaceFolder}/../logue-sdk/platform/inc/CMSIS",
+                "${workspaceFolder}/../logue-sdk/platform/inc/utils",
+                "${workspaceFolder}/../logue-sdk/platform/minilogue-xd/inc"
+            ],
+            "defines": [
+                "ARM_MATH_CM4"
+            ],
+            "compilerPath": "../logue-sdk/tools/gcc/gcc-arm-none-eabi-5_4-2016q3/bin/arm-none-eabi-gcc",
+            "cStandard": "c99",
+            "intelliSenseMode": "linux-gcc-arm"
+        },
+        {
+            "name": "Win32",
+            "includePath": [
+                "../inc/**",
+                "../../../platform/ext/CMSIS/CMSIS/Include"
+            ],
+            "defines": [
+                "ARM_MATH_CM4",
+                "__GNUC__=5"
+            ],
+            "compilerPath": "../../../tools/gcc/gcc-arm-none-eabi-5_4-2016q3/bin/arm-none-eabi-gcc.exe",
+            "cStandard": "c99",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-gcc-arm"
+        }
+    ],
+    "version": 4
+}

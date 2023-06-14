@@ -1,0 +1,9 @@
+{
+    "C_Cpp.codeAnalysis.clangTidy.args": [
+        "--extra-arg=-m32"
+    ],
+    "files.associations": {
+        "compat.h": "c",
+        "wvtable.h": "c"
+    }
+}
