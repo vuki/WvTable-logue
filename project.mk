@@ -6,7 +6,7 @@ PROJECT = WvTable
 
 UCSRC = 
 
-UCXXSRC = WvTable.cpp
+UCXXSRC = WvTable.cpp wtdef.cpp
 
 UINCDIR =
 
