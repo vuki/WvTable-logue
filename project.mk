@@ -8,6 +8,8 @@ UCSRC =
 
 UCXXSRC = WvTable.cpp wtdef.cpp
 
+UHEADERS = wtgen.h wtdef.h
+
 UINCDIR =
 
 UDEFS =

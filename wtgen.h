@@ -229,12 +229,22 @@ _INLINE float wt_generate(WtGenState* __restrict state)
     for (k = 0; k < 8; k++) {
         if (scaler[k]) {
             // here, check what kind of wave to generate
-            if (nwave[k] < NWAVES)
-                // assuming a memory wave:
+            if (nwave[k] < NWAVES && state->osc[0].wtn != 28 && state->osc[0].wtn != 29) {
                 y += scaler[k]
                     * (int8_t)(((ipos[k] & 0x40) ? (~WAVES[nwave[k]][~ipos[k] & 0x3F])
                                                  : (WAVES[nwave[k]][ipos[k] & 0x3F]))
                         ^ 0x80);
+                // TODO: wt 28 & 29
+            } else if (nwave[k] == STD_TRIANGLE) {
+                y += scaler[k] * ((ipos[k] < 64) ? (-96 + 3 * ipos[k]) : (96 - 3 * ipos[k]));
+            } else if (nwave[k] == STD_PULSE) {
+                y += scaler[k] * ((ipos[k] < 124) ? -64 : 127);
+            } else if (nwave[k] == STD_SQUARE) {
+                y += scaler[k] * ((ipos[k] < 64) ? -96 : 96);
+            } else if (nwave[k] == STD_SAW) {
+                y += scaler[k] * (-64 + ipos[k]);
+            }
+            // TODO: PolyBLEP for standard waves
         }
     }
 

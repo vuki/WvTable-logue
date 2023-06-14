@@ -19,6 +19,10 @@
 #define WV_SAW 63
 #define LAST_MEM_WAVE 59.f
 #define STANDARD_WAVES 60.f
+#define STD_TRIANGLE NWAVES
+#define STD_PULSE (NWAVES + 1)
+#define STD_SQUARE (NWAVES + 2)
+#define STD_SAW (NWAVES + 3)
 
 /*
  * Definition of waves (from PPG WAVE 2.3 ROM).
