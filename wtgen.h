@@ -14,6 +14,7 @@
 #define MAXPHASE 128.f
 #define EPS 1e-5f
 #define NOWAVE -1.f
+#define Q25TOF 2.9802322387695312e-08f
 
 #ifndef NO_FORCE_INLINE
 #if defined(__GNUC__)
@@ -54,6 +55,7 @@ typedef struct {
     float alpha_w; // linear interpolation coefficient
     uint32_t phase; // signal phase, Q7.25
     uint32_t step; // step to increase the phase, Q7.25
+    float recip_step; // 1/step as float
 } WtState;
 
 typedef struct {
@@ -110,6 +112,7 @@ _INLINE void wt_set_frequency(WtState* __restrict state, float freq, float phase
 {
     const float step_f = freq * phase_scaler;
     state->step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
+    state->recip_step = 0.0078125f / step_f; // (1/128)/step_f
 }
 
 /*  wtgen_set_wave
@@ -186,93 +189,15 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
     state->nwave = nwave;
 }
 
-#if 0
-_INLINE float wt_generate(WtGenState* __restrict state)
-{
-    static uint8_t nwave[8]; // wave numbers
-    static uint8_t ipos[8]; // integer sample positions
-    static float scaler[8]; // scaler values
-
-    uint8_t k = 0;
-    for (k = 0; k < 2; k++) {
-        if (state->osc[k].set_wave != state->osc[k].req_wave) {
-            set_wave_number(&state->osc[k], state->osc[k].req_wave);
-        }
-    }
-
-    // wave numbers
-    nwave[0] = nwave[1] = state->osc[0].wave1;
-    nwave[2] = nwave[3] = state->osc[0].wave2;
-    nwave[4] = nwave[5] = state->osc[1].wave1;
-    nwave[6] = nwave[7] = state->osc[1].wave2;
-
-    // sample positions and sample scalers
-    ipos[0] = ipos[2] = (uint8_t)state->osc[0].phase;
-    ipos[1] = ipos[3] = ipos[0] + 1; // auto wrap
-    ipos[4] = ipos[6] = (uint8_t)state->osc[1].phase;
-    ipos[5] = ipos[7] = ipos[4] + 1;
-    const float asA = state->osc[0].phase - ipos[0];
-    const float masA = 1.f - asA;
-    const float asB = state->osc[1].phase - ipos[4];
-    const float masB = 1.f - asB;
-
-    // other scalers (1-alpha)
-    const float mawA = 1.f - state->osc[0].alpha_w;
-    const float mawB = 1.f - state->osc[1].alpha_w;
-    const float mamix = 1.f - state->sub_mix;
-
-    // all scalers
-    scaler[0] = mamix * mawA * masA;
-    scaler[1] = mamix * mawA * asA;
-    scaler[2] = mamix * state->osc[0].alpha_w * masA;
-    scaler[3] = mamix * state->osc[0].alpha_w * asA;
-    scaler[4] = state->sub_mix * mawB * masB;
-    scaler[5] = state->sub_mix * mawB * asB;
-    scaler[6] = state->sub_mix * state->osc[1].alpha_w * masB;
-    scaler[7] = state->sub_mix * state->osc[1].alpha_w * asB;
-
-    // the generation loop
-    float y = 0;
-    for (k = 0; k < 8; k++) {
-        if (scaler[k]) {
-            // here, check what kind of wave to generate
-            if (nwave[k] < NWAVES && state->osc[0].wtn != 28 && state->osc[0].wtn != 29) {
-                y += scaler[k]
-                    * (int8_t)(((ipos[k] & 0x40) ? (~WAVES[nwave[k]][~ipos[k] & 0x3F])
-                                                 : (WAVES[nwave[k]][ipos[k] & 0x3F]))
-                        ^ 0x80);
-                // TODO: wt 28 & 29
-            } else if (nwave[k] == STD_TRIANGLE) {
-                y += scaler[k] * ((ipos[k] < 64) ? (-96 + 3 * ipos[k]) : (96 - 3 * ipos[k]));
-            } else if (nwave[k] == STD_PULSE) {
-                y += scaler[k] * ((ipos[k] < 124) ? -64 : 127);
-            } else if (nwave[k] == STD_SQUARE) {
-                y += scaler[k] * ((ipos[k] < 64) ? -96 : 96);
-            } else if (nwave[k] == STD_SAW) {
-                y += scaler[k] * (-64 + ipos[k]);
-            }
-            // TODO: PolyBLEP for standard waves
-        }
-    }
-
-    for (k = 0; k < 2; k++) {
-        state->osc[k].phase += state->osc[k].step;
-        if (state->osc[k].phase > MAXPHASE)
-            state->osc[k].phase -= MAXPHASE;
-    }
-    return y * 0.0078125;
-}
-#endif
-
 // Get sample from memory wave
 _INLINE float get_from_wave(uint8_t nwave, uint32_t phase)
 {
-    const float alpha = (float)(phase & 0x1ffffff) * 2.9802322387695312e-08f; // * 2**-25
+    const float alpha = (float)(phase & 0x1ffffff) * Q25TOF; // * 2**-25
     const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
     const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
     const int8_t val1 = (int8_t)(((pos1 & 0x40) ? (~WAVES[nwave][~pos1 & 0x3F]) : (WAVES[nwave][pos1 & 0x3F])) ^ 0x80);
     const int8_t val2 = (int8_t)(((pos2 & 0x40) ? (~WAVES[nwave][~pos2 & 0x3F]) : (WAVES[nwave][pos2 & 0x3F])) ^ 0x80);
-    return ((1.f - alpha) * val1 + alpha * val2) * 0.0078125f; // * 1/128
+    return (1.f - alpha) * val1 + alpha * val2;
 }
 
 _INLINE float wt_generate(WtGenState* __restrict state)
@@ -286,11 +211,49 @@ _INLINE float wt_generate(WtGenState* __restrict state)
 
     float y[4];
     const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
-    const uint32_t phase[4] = { state->osc[0].phase, state->osc[0].phase, state->osc[1].phase, state->osc[1].phase };
     for (k = 0; k < 4; k++) {
+        const uint8_t nosc = (k & 2) >> 1;
+        const float phase = state->osc[nosc].phase;
         if (nwave[k] < NWAVES && state->osc[0].wtn != 28 && state->osc[0].wtn != 29) {
-            y[k] = get_from_wave(nwave[k], phase[k]);
+            y[k] = get_from_wave(nwave[k], phase);
+        } else if (nwave[k] == STD_TRIANGLE) {
+            const float pos = (float)phase * Q25TOF;
+            y[k] = (pos < 64.f) ? (-96.f + 3.f * pos) : (96.f - 3.f * (pos - 64.f));
+        } else if (nwave[k] == STD_PULSE) {
+            const float pos = (float)phase * Q25TOF;
+            y[k] = (pos < 124.f) ? -64.f : 127.f;
+        } else if (nwave[k] == STD_SQUARE) {
+            const float pos = (float)phase * Q25TOF;
+            const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
+            const float rstep = (float)(state->osc[nosc].recip_step);
+            y[k] = (pos < 64.f) ? -96.f : 96.f;
+            if (pos < phase_step) {
+                const float t = pos * rstep;
+                y[k] -= (t + t - t * t - 1.f) * 96.f;
+            } else if (((64.f - phase_step) < pos) && (pos < 64.f)) {
+                const float t = (pos - 64.f) * rstep;
+                y[k] += (t * t + t + t + 1.f) * 96.f;
+            } else if ((64.f <= pos) && (pos < (64.f + phase_step))) {
+                const float t = (pos - 64.f) * rstep;
+                y[k] += (t + t - t * t - 1.f) * 96.f;
+            } else if (pos > 128 - phase_step) {
+                const float t = (pos - 128.f) * rstep;
+                y[k] -= (t * t + t + t + 1.f) * 96.f;
+            }
+        } else if (nwave[k] == STD_SAW) {
+            const float pos = (float)phase * Q25TOF;
+            const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
+            const float rstep = (float)(state->osc[nosc].recip_step);
+            y[k] = -64.f + pos;
+            if (pos < phase_step) {
+                const float t = pos * rstep;
+                y[k] -= (t + t - t * t - 1.f) * 64.f;
+            } else if (pos > 128.f - phase_step) {
+                const float t = (pos - 128.f) * rstep;
+                y[k] -= (t * t + t + t + 1.f) * 64.f;
+            }
         } else {
+            // TODO: WT28, WT29
             y[k] = 0;
         }
     }
@@ -298,7 +261,7 @@ _INLINE float wt_generate(WtGenState* __restrict state)
     state->osc[1].phase += state->osc[1].step;
     const float y1 = (1.f - state->osc[0].alpha_w) * y[0] + state->osc[0].alpha_w * y[1];
     const float y2 = (1.f - state->osc[1].alpha_w) * y[2] + state->osc[1].alpha_w * y[3];
-    return (1.f - state->sub_mix) * y1 + state->sub_mix * y2;
+    return ((1.f - state->sub_mix) * y1 + state->sub_mix * y2) * 0.0078125f; // * 1/128;
 }
 
 #endif
