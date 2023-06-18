@@ -31,8 +31,8 @@ __fast_inline void update_frequency(uint16_t pitch)
         const float f1 = osc_notehzf(note + 1);
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
     }
-    wt_set_frequency(&g_gen_state.osc[0], freq, g_gen_state.phase_scaler);
-    wt_set_frequency(&g_gen_state.osc[1], freq * 0.5f, g_gen_state.phase_scaler); // # TEMP - apply detune
+    wtgen_set_frequency(&g_gen_state, freq);
+    wtgen_set_sub_frequency(&g_gen_state, freq * 0.5f); // # TEMP - apply detune
     g_osc_params.pitch = pitch;
 }
 
@@ -80,16 +80,19 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     case k_user_osc_param_id1:
         // Param1: main osc wave number
         g_osc_params.newpar.main_wave = value;
-        wtgen_set_wave(&g_gen_state, (float)value); // # TEST
+        wtgen_set_wave(&g_gen_state, (float)value);
         break;
 
     case k_user_osc_param_id2:
-        // Param1: sub osc wave number
+        // Param2: sub osc wave number
         g_osc_params.newpar.sub_wave = value;
-        wtgen_set_sub_wave(&g_gen_state, (float)value); // # TEST
+        wtgen_set_sub_wave(&g_gen_state, (float)value);
         break;
 
     case k_user_osc_param_id3:
+        // Param 3: wavetable number
+        g_osc_params.newpar.wavetable = value;
+        wtgen_set_wavetable(&g_gen_state, (uint8_t)value);
         break;
 
     case k_user_osc_param_id4:

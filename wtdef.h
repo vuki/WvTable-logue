@@ -23,6 +23,8 @@
 #define STD_PULSE (NWAVES + 1)
 #define STD_SQUARE (NWAVES + 2)
 #define STD_SAW (NWAVES + 3)
+#define WAVE_SYNC (NWAVES + 4)
+#define WAVE_STEP (NWAVES + 5)
 
 /*
  * Definition of waves (from PPG WAVE 2.3 ROM).

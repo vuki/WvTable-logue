@@ -12,7 +12,7 @@
         "params" : [
             ["Wave Main",    0,  63, "%"],
             ["Wave Sub",     0,  63, "%"],
-            ["Wavetable",    0,  30, "%"],
+            ["Wavetable",    0,  60, "%"],
             ["Env Attack",   0, 100,  ""],
             ["Env Decay",    0, 100,  ""],
             ["Env Amount", -99, 100, "%"]

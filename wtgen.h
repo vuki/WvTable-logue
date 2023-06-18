@@ -68,7 +68,7 @@ typedef struct {
     // DecimatorState decimator[2]; // decimator memory
     // ADEnvState wave_env; // wave number envelope
     // RampState wave_ramp; // linear wave number modulation ramp
-    uint8_t phase_reset[2]; // flags that oscillator phase was reset
+    // uint8_t phase_reset[2]; // flags that oscillator phase was reset
 } WtGenState;
 
 /*  wtgen_init_state
@@ -100,7 +100,7 @@ void wtgen_init(WtGenState* __restrict state, float srate, OvsMode ovs_mode)
         state->osc[i].step = 1.f;
         state->osc[i].retro_mode = 0;
         state->base_wave[i] = 0;
-        state->phase_reset[i] = 1;
+        // state->phase_reset[i] = 1;
     }
     state->phase_scaler = 1.f / state->srate;
     state->sub_mix = 0;
@@ -108,11 +108,47 @@ void wtgen_init(WtGenState* __restrict state, float srate, OvsMode ovs_mode)
     // ramp_init(&state->wave_ramp);
 }
 
-_INLINE void wt_set_frequency(WtState* __restrict state, float freq, float phase_scaler)
+/*  wtgen_set_frequency
+    Set frequency of the main osc
+    freq: frequency in Hz
+*/
+_INLINE void wtgen_set_frequency(WtGenState* __restrict state, float freq)
 {
-    const float step_f = freq * phase_scaler;
-    state->step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
-    state->recip_step = 0.0078125f / step_f; // (1/128)/step_f
+    const float step_f = freq * state->phase_scaler;
+    state->osc[0].step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
+    state->osc[0].recip_step = 0.0078125f / step_f; // (1/128)/step_f
+}
+
+/*  wtgen_set_sub_frequency
+    Set frequency of the sub osc
+    freq: frequency in Hz
+*/
+_INLINE void wtgen_set_sub_frequency(WtGenState* __restrict state, float freq)
+{
+    const float step_f = freq * state->phase_scaler;
+    state->osc[1].step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
+    state->osc[1].recip_step = 0.0078125f / step_f; // (1/128)/step_f
+}
+
+/*  wtgen_set_wavetable
+    Set the wavetable to use
+    ntable: wavetable number, 0..61
+*/
+_INLINE void wtgen_set_wavetable(WtGenState* __restrict state, uint8_t ntable)
+{
+    while (ntable >= 61)
+        ntable -= 61;
+    uint8_t use_upper = 0;
+    if (ntable >= 30) {
+        use_upper = 1;
+        ntable -= 30;
+    }
+    if (ntable != state->osc[0].ntable) {
+        state->osc[0].ntable = state->osc[1].ntable = ntable;
+        state->osc[0].use_upper = state->osc[1].use_upper = use_upper;
+        state->osc[0].set_wave = state->osc[1].set_wave = NOWAVE;
+        state->osc[0].wt_def_pos = state->osc[1].wt_def_pos = 0;
+    }
 }
 
 /*  wtgen_set_wave
@@ -143,14 +179,14 @@ _INLINE void wtgen_set_sub_wave(WtGenState* __restrict state, float nwave)
 */
 _INLINE void set_wave_number(WtState* __restrict state, float nwave)
 {
-    if (state->set_wave == nwave)
-        return; // already set
+    // if (state->set_wave == nwave)
+    //     return; // already set
     state->set_wave = nwave;
     const uint8_t old_wtn = state->wtn;
-    while (nwave >= 128.f)
-        nwave -= 128.f;
-    while (nwave < 0)
-        nwave += 128.f;
+    // while (nwave >= 128.f)
+    //     nwave -= 128.f;
+    // while (nwave < 0)
+    //     nwave += 128.f;
     // if (state->retro_mode)
     //     nwave = (float)((uint8_t)nwave); // only integers
     if (nwave < 64.f) {
@@ -176,14 +212,16 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
             const uint8_t denom = wt_def[state->wt_def_pos + 1][0] - wt_def[state->wt_def_pos][0] - 1;
             state->alpha_w = (nwave - wt_def[state->wt_def_pos][0]) * WSCALER[denom];
         } else {
+            state->wave2 = STD_TRIANGLE;
             state->alpha_w = nwave - LAST_MEM_WAVE;
         }
     } else if ((state->wtn == WT_SYNC || state->wtn == WT_STEP) && nwave < LAST_MEM_WAVE) {
-        state->alpha_w = 0;
+        // TODO
     } else {
         const uint8_t nw = (uint8_t)nwave;
         state->wave1 = nw - STANDARD_WAVES + NWAVES;
-        state->wave2 = (nw < 63) ? state->wave1 + 1 : WT_POS[WT_IDX[state->wtn]][1];
+        const uint8_t next_wt = (state->wtn != WT_UPPER && state->use_upper) ? WT_UPPER : state->wtn;
+        state->wave2 = (nw < 63) ? state->wave1 + 1 : WT_POS[WT_IDX[next_wt]][1];
         state->alpha_w = nwave - nw;
     }
     state->nwave = nwave;
