@@ -34,7 +34,8 @@ MCU := cortex-m4
 MCU_MODEL := STM32F401xC
 
 GCC_TARGET := arm-none-eabi-
-GCC_BIN_PATH ?= $(TOOLSDIR)/gcc/gcc-arm-none-eabi-5_4-2016q3/bin
+#GCC_BIN_PATH ?= $(TOOLSDIR)/gcc/gcc-arm-none-eabi-5_4-2016q3/bin
+GCC_BIN_PATH ?= $(TOOLSDIR)/gcc/gcc-arm-none-eabi-10-2020-q4-major/bin
 
 CC   := $(GCC_BIN_PATH)/$(GCC_TARGET)gcc
 CXXC := $(GCC_BIN_PATH)/$(GCC_TARGET)g++
@@ -56,16 +57,17 @@ DLIBS := -lm
 DADEFS := -D$(MCU_MODEL) -DCORTEX_USE_FPU=TRUE -DARM_MATH_CM4
 DDEFS := -D$(MCU_MODEL) -DCORTEX_USE_FPU=TRUE -DARM_MATH_CM4 -D__FPU_PRESENT
 
-COPT := -std=c11 -mstructure-size-boundary=8
+COPT := -std=c11
 CXXOPT := -std=c++11 -fno-rtti -fno-exceptions -fno-non-call-exceptions
 
 LDOPT := -Xlinker --just-symbols=$(LDDIR)/osc_api.syms
 
 CWARN := -W -Wall -Wextra
-CXXWARN :=
+CXXWARN := -W -Wall -Wextra
 
 FPU_OPTS := -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -fcheck-new
 
+# OPT := -g -O3 -mlittle-endian 
 OPT := -g -Os -mlittle-endian 
 OPT += $(FPU_OPTS)
 #OPT += -flto
@@ -178,7 +180,7 @@ $(COBJS) : $(OBJDIR)/%.o : %.c $(UHEADERS) Makefile
 	@echo Compiling $(<F)
 	@$(CC) -c $(CFLAGS) -I. $(INCDIR) $< -o $@
 
-$(CXXOBJS) : $(OBJDIR)/%.o : %.cpp Makefile
+$(CXXOBJS) : $(OBJDIR)/%.o : %.cpp $(UHEADERS) Makefile
 	@echo Compiling $(<F)
 	@$(CXXC) -c $(CXXFLAGS) -I. $(INCDIR) $< -o $@
 

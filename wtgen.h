@@ -52,8 +52,8 @@ typedef struct {
     uint8_t wave2; // number of the second stored wave (after the wave)
     uint8_t retro_mode; // use 'retro mode' for sample generation (no interpolation)
     float alpha_w; // linear interpolation coefficient
-    float phase; // signal phase, 0..128
-    float step; // step to increase the phase
+    uint32_t phase; // signal phase, Q7.25
+    uint32_t step; // step to increase the phase, Q7.25
 } WtState;
 
 typedef struct {
@@ -100,10 +100,16 @@ void wtgen_init(WtGenState* __restrict state, float srate, OvsMode ovs_mode)
         state->base_wave[i] = 0;
         state->phase_reset[i] = 1;
     }
-    state->phase_scaler = MAXPHASE / state->srate;
+    state->phase_scaler = 1.f / state->srate;
     state->sub_mix = 0;
     // adenv_init(&state->wave_env, srate); // not oversampled
     // ramp_init(&state->wave_ramp);
+}
+
+_INLINE void wt_set_frequency(WtState* __restrict state, float freq, float phase_scaler)
+{
+    const float step_f = freq * phase_scaler;
+    state->step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
 }
 
 /*  wtgen_set_wave
@@ -134,16 +140,16 @@ _INLINE void wtgen_set_sub_wave(WtGenState* __restrict state, float nwave)
 */
 _INLINE void set_wave_number(WtState* __restrict state, float nwave)
 {
-    if (state->set_wave == nwave)
-        return; // already set
+    // if (state->set_wave == nwave)
+    //     return; // already set
     state->set_wave = nwave;
     const uint8_t old_wtn = state->wtn;
     while (nwave >= 128.f)
         nwave -= 128.f;
     while (nwave < 0)
         nwave += 128.f;
-    if (state->retro_mode)
-        nwave = (float)((uint8_t)nwave); // only integers
+    // if (state->retro_mode)
+    //     nwave = (float)((uint8_t)nwave); // only integers
     if (nwave < 64.f) {
         state->wtn = state->ntable;
     } else {
@@ -180,6 +186,7 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
     state->nwave = nwave;
 }
 
+#if 0
 _INLINE float wt_generate(WtGenState* __restrict state)
 {
     static uint8_t nwave[8]; // wave numbers
@@ -254,6 +261,39 @@ _INLINE float wt_generate(WtGenState* __restrict state)
             state->osc[k].phase -= MAXPHASE;
     }
     return y * 0.0078125;
+}
+#endif
+
+// Get sample from memory wave
+_INLINE float get_from_wave(uint8_t nwave, uint32_t phase)
+{
+    const float alpha = (float)(phase & 0x1ffffff) * 2.9802322387695312e-08f; // * 2**-25
+    const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
+    const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
+    const int8_t val1 = (int8_t)(((pos1 & 0x40) ? (~WAVES[nwave][~pos1 & 0x3F]) : (WAVES[nwave][pos1 & 0x3F])) ^ 0x80);
+    const int8_t val2 = (int8_t)(((pos2 & 0x40) ? (~WAVES[nwave][~pos2 & 0x3F]) : (WAVES[nwave][pos2 & 0x3F])) ^ 0x80);
+    return ((1.f - alpha) * val1 + alpha * val2) * 0.0078125f; // * 1/128
+}
+
+_INLINE float wt_generate(WtGenState* __restrict state)
+{
+    // memory waves only
+    float y[4];
+    const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
+    const uint32_t phase[4] = { state->osc[0].phase, state->osc[0].phase, state->osc[1].phase, state->osc[1].phase };
+    uint8_t k = 0;
+    for (k = 0; k < 4; k++) {
+        if (nwave[k] < NWAVES && state->osc[0].wtn != 28 && state->osc[0].wtn != 29) {
+            y[k] = get_from_wave(nwave[k], phase[k]);
+        } else {
+            y[k] = 0;
+        }
+    }
+    state->osc[0].phase += state->osc[0].step;
+    state->osc[1].phase += state->osc[1].step;
+    const float y1 = (1.f - state->osc[0].alpha_w) * y[0] + state->osc[0].alpha_w * y[1];
+    const float y2 = (1.f - state->osc[1].alpha_w) * y[2] + state->osc[1].alpha_w * y[3];
+    return (1.f - state->sub_mix) * y1 + state->sub_mix * y2;
 }
 
 #endif
