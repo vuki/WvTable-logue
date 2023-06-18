@@ -140,8 +140,8 @@ _INLINE void wtgen_set_sub_wave(WtGenState* __restrict state, float nwave)
 */
 _INLINE void set_wave_number(WtState* __restrict state, float nwave)
 {
-    // if (state->set_wave == nwave)
-    //     return; // already set
+    if (state->set_wave == nwave)
+        return; // already set
     state->set_wave = nwave;
     const uint8_t old_wtn = state->wtn;
     while (nwave >= 128.f)
@@ -277,11 +277,16 @@ _INLINE float get_from_wave(uint8_t nwave, uint32_t phase)
 
 _INLINE float wt_generate(WtGenState* __restrict state)
 {
-    // memory waves only
+    uint8_t k = 0;
+    for (k = 0; k < 2; k++) {
+        if (state->osc[k].set_wave != state->osc[k].req_wave) {
+            set_wave_number(&state->osc[k], state->osc[k].req_wave);
+        }
+    }
+
     float y[4];
     const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
     const uint32_t phase[4] = { state->osc[0].phase, state->osc[0].phase, state->osc[1].phase, state->osc[1].phase };
-    uint8_t k = 0;
     for (k = 0; k < 4; k++) {
         if (nwave[k] < NWAVES && state->osc[0].wtn != 28 && state->osc[0].wtn != 29) {
             y[k] = get_from_wave(nwave[k], phase[k]);

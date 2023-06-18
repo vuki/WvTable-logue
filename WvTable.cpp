@@ -80,15 +80,13 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     case k_user_osc_param_id1:
         // Param1: main osc wave number
         g_osc_params.newpar.main_wave = value;
-        // wtgen_set_wave(&g_gen_state, (float)value); // # TEST
-        set_wave_number(&g_gen_state.osc[0], (float)value); // # TEST
+        wtgen_set_wave(&g_gen_state, (float)value); // # TEST
         break;
 
     case k_user_osc_param_id2:
         // Param1: sub osc wave number
         g_osc_params.newpar.sub_wave = value;
-        // wtgen_set_sub_wave(&g_gen_state, (float)value); // # TEST
-        set_wave_number(&g_gen_state.osc[1], (float)value); // # TEST
+        wtgen_set_sub_wave(&g_gen_state, (float)value); // # TEST
         break;
 
     case k_user_osc_param_id3:
