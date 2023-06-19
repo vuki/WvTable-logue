@@ -60,6 +60,6 @@ extern const float WSCALER[32];
  * For wavetable 28 (sync): number of position changes that cause a sync.
  * Index: wave number.
  */
-extern const unsigned short WT28_SPAN[];
+extern const unsigned char WT28_SPAN[];
 
 #endif
