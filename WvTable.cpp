@@ -57,6 +57,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
     const q31_t* py_e = py + frames;
     for (; py != py_e;) {
         float sig = wt_generate(&g_gen_state);
+        // float sig = wt_generate_ovs(&g_gen_state);
         *(py++) = f32_to_q31(sig);
     }
 }
