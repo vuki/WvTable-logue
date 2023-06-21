@@ -42,6 +42,8 @@ typedef enum {
     OVS_4x = 4 // oversampling with factor 4
 } OvsMode; // Wavetable generator state
 
+typedef enum { ENV_S, ENV_A, ENV_D } EnvStage;
+
 typedef struct {
     float nwave; // normalized wave number, 0..64
     float set_wave; // last wave number (raw) that was set
@@ -61,11 +63,16 @@ typedef struct {
 
 typedef struct {
     WtState osc[2]; // oscillators: main, sub
-    float base_wave[2]; // base wave number without modulation
+    // float base_wave[2]; // base wave number without modulation
     float sub_mix; // sub oscillator mix, 0..1 (0..100%)
     float srate;
     float phase_scaler;
     OvsMode ovs_mode; // oversampling rate: 1 (none), 2 (2x), 4 (4x)
+    EnvStage wave_env_stage;
+    float wave_env_arate;
+    float wave_env_drate;
+    float wave_env_amount;
+    float wave_mod;
     // DecimatorState decimator[2]; // decimator memory
     // ADEnvState wave_env; // wave number envelope
     // RampState wave_ramp; // linear wave number modulation ramp
@@ -99,12 +106,17 @@ void wtgen_init(WtGenState* __restrict state, float srate, OvsMode ovs_mode)
         state->osc[i].alpha_w = 0;
         state->osc[i].phase = 0;
         state->osc[i].step = 0x2000000;
-        state->osc[i].retro_mode = 0;
-        state->base_wave[i] = 0;
+        // state->osc[i].retro_mode = 0;
+        // state->base_wave[i] = 0;
         // state->phase_reset[i] = 1;
     }
     state->phase_scaler = 1.f / state->srate;
     state->sub_mix = 0;
+    state->wave_env_stage = ENV_S;
+    state->wave_env_arate = 0;
+    state->wave_env_drate = 0;
+    state->wave_env_amount = 0;
+    state->wave_mod = 0;
     // adenv_init(&state->wave_env, srate); // not oversampled
     // ramp_init(&state->wave_ramp);
 }
@@ -156,23 +168,25 @@ _INLINE void wtgen_set_wavetable(WtGenState* __restrict state, uint8_t ntable)
     Set the wave number for the main oscillator
     nwave: wave number, float 0..127
 */
+/*
 _INLINE void wtgen_set_wave(WtGenState* __restrict state, float nwave)
 {
     state->osc[0].req_wave = nwave;
     // defer actual wave number setting to the generation stage
-    state->base_wave[0] = nwave;
 }
+*/
 
 /*  wtgen_set_sub_wave
     Set the wave number for the sub oscillator
     nwave: wave number, float 0..127
 */
+/*
 _INLINE void wtgen_set_sub_wave(WtGenState* __restrict state, float nwave)
 {
     state->osc[1].req_wave = nwave;
     // defer actual wave number setting to the generation stage
-    state->base_wave[1] = nwave;
 }
+*/
 
 /*  set_wave_number
     Set the wave number
@@ -184,10 +198,10 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
     //     return; // already set
     state->set_wave = nwave;
     const uint8_t old_wtn = state->wtn;
-    // while (nwave >= 128.f)
-    //     nwave -= 128.f;
-    // while (nwave < 0)
-    //     nwave += 128.f;
+    while (nwave >= 128.f)
+        nwave -= 128.f;
+    while (nwave < 0)
+        nwave += 128.f;
     // if (state->retro_mode)
     //     nwave = (float)((uint8_t)nwave); // only integers
     if (nwave < 64.f) {
@@ -239,20 +253,25 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
 
 _INLINE float wt_generate(WtGenState* __restrict state)
 {
-    uint8_t k = 0;
+    // wave number modulation
+    const float wave_mod = state->wave_mod * state->wave_env_amount;
+    uint8_t k;
     for (k = 0; k < 2; k++) {
-        if (state->osc[k].set_wave != state->osc[k].req_wave) {
-            set_wave_number(&state->osc[k], state->osc[k].req_wave);
+        const float nwave = state->osc[k].req_wave + wave_mod;
+        if (nwave != state->osc[k].set_wave) {
+            set_wave_number(&state->osc[k], nwave);
         }
     }
 
+    // generate 4 values for interpolation
+    // (main_wave1, main_wave2, sub_wave1, sub_wave2)
     float y[4];
     const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
     for (k = 0; k < 4; k++) {
         const uint8_t nosc = k >> 1; // 0->0, 1->0, 2->1, 3->1
         const uint32_t phase = state->osc[nosc].phase;
         if (nwave[k] < NWAVES) {
-            // memory wave
+            // memory wave - interpolate between samples
             const float alpha = (float)(phase & 0x1ffffff) * Q25TOF;
             const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
             const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
@@ -304,10 +323,8 @@ _INLINE float wt_generate(WtGenState* __restrict state)
         } else if (nwave[k] == WAVE_SYNC) {
             // wavetable 28: sync wave
             const uint8_t nwave = (int8_t)state->osc[nosc].nwave;
-            const uint32_t span = (uint32_t)(WT28_SPAN[nwave]) << 24; // EQ8.24
+            const uint32_t span = (uint32_t)(WT28_SPAN[nwave]) << 24; // UQ8.24
             uint32_t pos = (phase >> 1) % span; // UQ8.24
-            // while (pos >= span)
-            //     pos -= span;
             y[k] = (1.f + nwave * 0.0859375f) * (float)pos * Q24TOF - 64.f;
         } else if (nwave[k] == WAVE_STEP) {
             // wavetable 29: step wave (with PolyBLEP)
@@ -335,12 +352,13 @@ _INLINE float wt_generate(WtGenState* __restrict state)
     }
     state->osc[0].phase += state->osc[0].step;
     state->osc[1].phase += state->osc[1].step;
+    // interpolation
     const float y1 = (1.f - state->osc[0].alpha_w) * y[0] + state->osc[0].alpha_w * y[1];
     const float y2 = (1.f - state->osc[1].alpha_w) * y[2] + state->osc[1].alpha_w * y[3];
     return ((1.f - state->sub_mix) * y1 + state->sub_mix * y2) * 0.0078125f; // * 1/128;
 }
 
-#ifdef ARM_MATH_CM4
+#if 0
 _INLINE float wt_generate_ovs(WtGenState* __restrict state)
 {
     uint8_t k, n;
@@ -378,96 +396,6 @@ _INLINE float wt_generate_ovs(WtGenState* __restrict state)
                 const float alpha = (float)(phase[nosc][n] & 0x1ffffff) * Q25TOF;
                 y[k][n] = (1.f - alpha) * val1 + alpha * val2;
             }
-
-            /*
-            for (n = 0; n < 4; n++) {
-                const uint32_t phase = phasebuf[nosc][n];
-                alphabuf[1][n] = (float)(phase & 0x1ffffff) * Q25TOF;
-                alphabuf[0][n] = 1.f - alphabuf[1][n];
-                const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
-                const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
-                workbuf[0][n] = (float)(int8_t)(((pos1 & 0x40) ? (~WAVES[nwave[k]][~pos1 & 0x3F])
-                                                               : (WAVES[nwave[k]][pos1 & 0x3F]))
-                    ^ 0x80);
-                workbuf[1][n] = (float)(int8_t)(((pos2 & 0x40) ? (~WAVES[nwave[k]][~pos2 & 0x3F])
-                                                               : (WAVES[nwave[k]][pos2 & 0x3F]))
-                    ^ 0x80);
-            }
-            // y[k] = (1.f - alpha) * val1 + alpha * val2;
-            arm_mult_f32(&workbuf[0][0], &alphabuf[0][0], &workbuf[2][0]);
-            arm_mult_f32(&workbuf[1][0], &alphabuf[1][0], &workbuf[3][0]);
-            arm_add_f32(&workbuf[2][0], &workbuf[3][0], &y[k][0]);
-            */
-            /*
-            } else if (nwave[k] == STD_TRIANGLE) {
-                // standard wave: triangle
-                const float pos = (float)phase * Q25TOF;
-                y[k] = (pos < 64.f) ? (-96.f + 3.f * pos) : (96.f - 3.f * (pos - 64.f));
-            } else if (nwave[k] == STD_PULSE) {
-                // standard wave: pulse
-                const float pos = (float)phase * Q25TOF;
-                y[k] = (pos < 124.f) ? -64.f : 127.f;
-            } else if (nwave[k] == STD_SQUARE) {
-                // standard wave: square (with PolyBLEP)
-                const float pos = (float)phase * Q25TOF;
-                const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
-                const float rstep = (float)(state->osc[nosc].recip_step);
-                y[k] = (pos < 64.f) ? -96.f : 96.f;
-                if (pos < phase_step) {
-                    const float t = pos * rstep;
-                    y[k] -= (t + t - t * t - 1.f) * 96.f;
-                } else if (((64.f - phase_step) < pos) && (pos < 64.f)) {
-                    const float t = (pos - 64.f) * rstep;
-                    y[k] += (t * t + t + t + 1.f) * 96.f;
-                } else if ((64.f <= pos) && (pos < (64.f + phase_step))) {
-                    const float t = (pos - 64.f) * rstep;
-                    y[k] += (t + t - t * t - 1.f) * 96.f;
-                } else if (pos > 128 - phase_step) {
-                    const float t = (pos - 128.f) * rstep;
-                    y[k] -= (t * t + t + t + 1.f) * 96.f;
-                }
-            } else if (nwave[k] == STD_SAW) {
-                // standard wave: sawtooth (with PolyBLEP)
-                const float pos = (float)phase * Q25TOF;
-                const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
-                const float rstep = (float)(state->osc[nosc].recip_step);
-                y[k] = -64.f + pos;
-                if (pos < phase_step) {
-                    const float t = pos * rstep;
-                    y[k] -= (t + t - t * t - 1.f) * 64.f;
-                } else if (pos > 128.f - phase_step) {
-                    const float t = (pos - 128.f) * rstep;
-                    y[k] -= (t * t + t + t + 1.f) * 64.f;
-                }
-            } else if (nwave[k] == WAVE_SYNC) {
-                // wavetable 28: sync wave
-                const uint8_t nwave = (int8_t)state->osc[nosc].nwave;
-                const uint32_t span = (uint32_t)(WT28_SPAN[nwave]) << 24; // EQ8.24
-                uint32_t pos = (phase >> 1) % span; // UQ8.24
-                // while (pos >= span)
-                //     pos -= span;
-                y[k] = (1.f + nwave * 0.0859375f) * (float)pos * Q24TOF - 64.f;
-            } else if (nwave[k] == WAVE_STEP) {
-                // wavetable 29: step wave (with PolyBLEP)
-                const float pos = (float)phase * Q25TOF;
-                const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
-                const float rstep = (float)(state->osc[nosc].recip_step);
-                const float edge = 69.f + state->osc[nosc].nwave;
-                y[k] = (pos < edge) ? 32.f : -32.f;
-                if (pos < phase_step) {
-                    const float t = pos * rstep;
-                    y[k] += (t + t - t * t - 1.f) * 32.f;
-                } else if (((edge - phase_step) < pos) && (pos < edge)) {
-                    const float t = (pos - edge) * rstep;
-                    y[k] -= (t * t + t + t + 1.f) * 32.f;
-                } else if ((edge <= pos) && (pos < (edge + phase_step))) {
-                    const float t = (pos - edge) * rstep;
-                    y[k] -= (t + t - t * t - 1.f) * 32.f;
-                } else if (pos > 128 - phase_step) {
-                    const float t = (pos - 128.f) * rstep;
-                    y[k] += (t * t + t + t + 1.f) * 32.f;
-                }
-            */
         } else {
             y[k][0] = y[k][1] = y[k][2] = y[k][3] = 0;
         }
@@ -484,6 +412,6 @@ _INLINE float wt_generate_ovs(WtGenState* __restrict state)
     return (y[0][0] + y[0][1] + y[0][2] + y[0][3]) * 0.25f;
 }
 
-#endif // ifdef ARM_MATH_CM4
+#endif
 
 #endif

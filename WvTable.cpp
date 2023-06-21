@@ -2,6 +2,8 @@
 #include "userosc.h"
 #include "wtgen.h"
 
+#define MAXMOD 64.f
+
 typedef struct {
     uint16_t pitch;
     float frequency;
@@ -41,6 +43,10 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     (void)platform;
     (void)api;
     wtgen_init(&g_gen_state, k_samplerate, OVS_NONE);
+    // TEST envelope
+    // g_gen_state.wave_env_arate = 5.208333333333333e-06f; // 4s
+    // g_gen_state.wave_env_drate = -5.208333333333333e-06f; // 4s
+    // g_gen_state.wave_env_amount = 64.f;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t frames)
@@ -52,13 +58,33 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
         update_frequency(params->pitch);
     }
 
+    // wave modulation
+    float mod_rate;
+    if (g_gen_state.wave_env_stage == ENV_S) {
+        // TODO: LFO
+        mod_rate = 0;
+    } else {
+        mod_rate = (g_gen_state.wave_env_stage == ENV_A) ? g_gen_state.wave_env_arate : g_gen_state.wave_env_drate;
+    }
+
     // sample generation
     q31_t* __restrict py = (q31_t*)yn;
     const q31_t* py_e = py + frames;
     for (; py != py_e;) {
-        float sig = wt_generate(&g_gen_state);
-        // float sig = wt_generate_ovs(&g_gen_state);
-        *(py++) = f32_to_q31(sig);
+        // wave modulation
+        g_gen_state.wave_mod += mod_rate;
+        if (g_gen_state.wave_mod > 1.f && g_gen_state.wave_env_stage == ENV_A) {
+            g_gen_state.wave_mod = 2.f - g_gen_state.wave_mod;
+            g_gen_state.wave_env_stage = ENV_D;
+            mod_rate = g_gen_state.wave_env_drate;
+        }
+        if (g_gen_state.wave_mod < 0.f && g_gen_state.wave_env_stage == ENV_D) {
+            g_gen_state.wave_mod = 0;
+            g_gen_state.wave_env_stage = ENV_S;
+            mod_rate = 0;
+        }
+        // sample generation
+        *(py++) = f32_to_q31(wt_generate(&g_gen_state));
     }
 }
 
@@ -67,6 +93,15 @@ void OSC_NOTEON(const user_osc_param_t* const params)
     (void)params;
     g_gen_state.osc[0].phase = 0;
     g_gen_state.osc[1].phase = 0;
+    g_gen_state.wave_mod = 0;
+    if (g_gen_state.wave_env_arate < 1.f) {
+        g_gen_state.wave_env_stage = ENV_A;
+    } else if (g_gen_state.wave_env_drate > -1.f) {
+        g_gen_state.wave_env_stage = ENV_D;
+        g_gen_state.wave_mod = 1.f;
+    } else {
+        g_gen_state.wave_env_stage = ENV_S;
+    }
 }
 
 void OSC_NOTEOFF(const user_osc_param_t* const params)
@@ -81,13 +116,13 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     case k_user_osc_param_id1:
         // Param1: main osc wave number
         g_osc_params.newpar.main_wave = value;
-        wtgen_set_wave(&g_gen_state, (float)value);
+        g_gen_state.osc[0].req_wave = (float)value;
         break;
 
     case k_user_osc_param_id2:
         // Param2: sub osc wave number
         g_osc_params.newpar.sub_wave = value;
-        wtgen_set_sub_wave(&g_gen_state, (float)value);
+        g_gen_state.osc[1].req_wave = (float)value;
         break;
 
     case k_user_osc_param_id3:
