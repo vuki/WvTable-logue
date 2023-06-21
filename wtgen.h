@@ -72,6 +72,7 @@ typedef struct {
     float wave_env_arate;
     float wave_env_drate;
     float wave_env_amount;
+    float wave_env_value;
     float wave_mod;
     // DecimatorState decimator[2]; // decimator memory
     // ADEnvState wave_env; // wave number envelope
@@ -116,6 +117,7 @@ void wtgen_init(WtGenState* __restrict state, float srate, OvsMode ovs_mode)
     state->wave_env_arate = 0;
     state->wave_env_drate = 0;
     state->wave_env_amount = 0;
+    state->wave_env_value = 0;
     state->wave_mod = 0;
     // adenv_init(&state->wave_env, srate); // not oversampled
     // ramp_init(&state->wave_ramp);
@@ -254,10 +256,9 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
 _INLINE float wt_generate(WtGenState* __restrict state)
 {
     // wave number modulation
-    const float wave_mod = state->wave_mod * state->wave_env_amount;
     uint8_t k;
     for (k = 0; k < 2; k++) {
-        const float nwave = state->osc[k].req_wave + wave_mod;
+        const float nwave = state->osc[k].req_wave + state->wave_mod;
         if (nwave != state->osc[k].set_wave) {
             set_wave_number(&state->osc[k], nwave);
         }
