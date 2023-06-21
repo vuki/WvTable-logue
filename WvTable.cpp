@@ -2,8 +2,6 @@
 #include "userosc.h"
 #include "wtgen.h"
 
-#define MAX_ENV_AMOUNT 64.f
-
 typedef struct {
     uint16_t pitch;
     float frequency;
@@ -59,12 +57,12 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
     }
 
     // wave modulation
-    // float mod_rate = 0;
+    float mod_rate = 0;
     if (g_gen_state.wave_env_stage == ENV_S) {
         // LFO
-        // const float mod_lfo = q31_to_f32(params->shape_lfo);
-        // const float denom = (frames == 64) ? 0.015625f : (frames == 32 ? 0.03125f : 1.f / frames);
-        // mod_rate = (mod_lfo - g_gen_state.wave_mod) * denom;
+        const float mod_lfo = (float)params->shape_lfo * 2.9802322387695312e-08f; // normalize to -64..64
+        const float denom = (frames == 64) ? 0.015625f : (frames == 32 ? 0.03125f : 1.f / frames);
+        mod_rate = (mod_lfo - g_gen_state.wave_mod) * denom;
     }
 
     // sample generation
@@ -74,6 +72,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
         // wave modulation
         if (g_gen_state.wave_env_stage == ENV_S) {
             // LFO
+            g_gen_state.wave_mod += mod_rate;
         } else if (g_gen_state.wave_env_stage == ENV_A) {
             // envelope in attack stage
             g_gen_state.wave_env_value += g_gen_state.wave_env_arate;
