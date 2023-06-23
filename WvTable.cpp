@@ -36,21 +36,30 @@ __fast_inline void update_frequency(uint16_t pitch)
     g_osc_params.pitch = pitch;
 }
 
+__fast_inline float calc_envelope_rate(uint16_t par)
+{
+    // convert parameter to time in seconds
+    if (par == 0)
+        return 1.f;
+    float tenv = 0;
+    if (par <= 34)
+        tenv = (float)par * 0.01470588235294118f; // (0.5 * v / 34)
+    else if (par <= 68)
+        tenv = (float)(par - 34) * 0.0588235294117647f + 0.5f; // (2 * (v-34) / 34 + 0.5)
+    else
+        tenv = (float)(par - 68) * 0.25f + 2.5f; // (0.25 * (v-68) + 2.5)
+    return 1.f / (g_gen_state.srate * tenv);
+}
+
 void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
     wtgen_init(&g_gen_state, k_samplerate, OVS_NONE);
-    // TEST envelope
-    // g_gen_state.wave_env_arate = 5.208333333333333e-06f; // 4s
-    // g_gen_state.wave_env_drate = -5.208333333333333e-06f; // 4s
-    // g_gen_state.wave_env_amount = 64.f;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t frames)
 {
-    (void)params;
-
     // check for pitch change
     if (params->pitch != g_osc_params.pitch) {
         update_frequency(params->pitch);
@@ -97,19 +106,41 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
 
 void OSC_NOTEON(const user_osc_param_t* const params)
 {
-    (void)params;
     g_gen_state.osc[0].phase = 0;
     g_gen_state.osc[1].phase = 0;
     g_gen_state.wave_mod = 0;
     g_gen_state.wave_env_value = 0;
-    if (g_gen_state.wave_env_arate != 0) {
+
+    // wave envelope times
+    if (g_osc_params.newpar.env_attack != g_osc_params.saved.env_attack) {
+        g_gen_state.wave_env_arate = calc_envelope_rate(g_osc_params.newpar.env_attack);
+        g_osc_params.saved.env_attack = g_osc_params.newpar.env_attack;
+    }
+    if (g_osc_params.newpar.env_decay != g_osc_params.saved.env_decay) {
+        g_gen_state.wave_env_drate = -calc_envelope_rate(g_osc_params.newpar.env_decay);
+        g_osc_params.saved.env_decay = g_osc_params.newpar.env_decay;
+    }
+    // wave envelope amount
+    if (g_osc_params.newpar.env_amount != g_osc_params.saved.env_amount) {
+        // scale 0..200 to -64..64 (value 0 is 0 amount - logue bug)
+        const uint32_t ea = g_osc_params.newpar.env_amount;
+        g_gen_state.wave_env_amount = (ea > 0) ? (((float)ea - 100.f) * 0.64f) : 0;
+        g_osc_params.saved.env_amount = g_osc_params.newpar.env_amount;
+    }
+    // set envelope stage
+    if (g_osc_params.saved.env_attack != 0) {
         g_gen_state.wave_env_stage = ENV_A;
-    } else if (g_gen_state.wave_env_drate != 0) {
+    } else if (g_osc_params.saved.env_decay != 0) {
         g_gen_state.wave_env_stage = ENV_D;
         g_gen_state.wave_env_value = 1.f;
         g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
     } else {
         g_gen_state.wave_env_stage = ENV_S;
+    }
+
+    // check for pitch change
+    if (params->pitch != g_osc_params.pitch) {
+        update_frequency(params->pitch);
     }
 }
 
@@ -141,12 +172,18 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         break;
 
     case k_user_osc_param_id4:
+        // Param4: wave envelope attack time (0..100)
+        g_osc_params.newpar.env_attack = value;
         break;
 
     case k_user_osc_param_id5:
+        // Param5: wave envelope decay time (0..100)
+        g_osc_params.newpar.env_decay = value;
         break;
 
     case k_user_osc_param_id6:
+        // Param6: wave envelope amount (1..200)
+        g_osc_params.newpar.env_amount = value;
         break;
 
     case k_user_osc_param_shape:
