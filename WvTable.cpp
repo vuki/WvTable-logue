@@ -1,6 +1,7 @@
 
 #include "userosc.h"
 #include "wtgen.h"
+#include "detune.h"
 
 typedef struct {
     uint16_t pitch;
@@ -32,7 +33,7 @@ __fast_inline void update_frequency(uint16_t pitch)
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
     }
     wtgen_set_frequency(&g_gen_state, freq);
-    wtgen_set_sub_frequency(&g_gen_state, freq * 0.5f); // # TEMP - apply detune
+    wtgen_set_sub_frequency(&g_gen_state, freq * g_osc_params.sub_freq_ratio); // # TEMP - apply detune
     g_osc_params.pitch = pitch;
 }
 
@@ -154,21 +155,19 @@ void OSC_PARAM(uint16_t index, uint16_t value)
 
     switch (index) {
     case k_user_osc_param_id1:
-        // Param1: main osc wave number
-        g_osc_params.newpar.main_wave = value;
-        g_gen_state.osc[0].req_wave = (float)value;
+        // Param 1: wavetable number
+        wtgen_set_wavetable(&g_gen_state, (value <= 60 ? (uint8_t)value : 0));
         break;
 
     case k_user_osc_param_id2:
-        // Param2: sub osc wave number
-        g_osc_params.newpar.sub_wave = value;
-        g_gen_state.osc[1].req_wave = (float)value;
+        // Param2: sub osc mix
+        g_gen_state.sub_mix = (value <= 100 ? value : 0) * 0.01f;
         break;
 
     case k_user_osc_param_id3:
-        // Param 3: wavetable number
-        g_osc_params.newpar.wavetable = value;
-        wtgen_set_wavetable(&g_gen_state, (uint8_t)value);
+        // Param 3: sub osc detune
+        g_osc_params.sub_freq_ratio = DETUNE_TABLE[(value <= 200) ? value : 0];
+        g_osc_params.pitch = 0; // force recalc on next frame
         break;
 
     case k_user_osc_param_id4:
@@ -187,12 +186,13 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         break;
 
     case k_user_osc_param_shape:
-        // Shape: sub oscillator mix
-        g_osc_params.newpar.sub_mix = value;
-        g_gen_state.sub_mix = (float)value * 0.0009765625f; // 1/1024
+        // Shape: main osc wave number
+        g_gen_state.osc[0].req_wave = value * 0.125f; // value/8
         break;
 
     case k_user_osc_param_shiftshape:
+        // Shift+Shape: sub osc wave number
+        g_gen_state.osc[1].req_wave = value * 0.125f; // value/8
         break;
 
     default:

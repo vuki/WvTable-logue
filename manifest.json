@@ -10,11 +10,11 @@
         "name" : "WvTable",
         "num_param" : 6,
         "params" : [
-            ["Wave Main",    0,  63, "%"],
-            ["Wave Sub",     0,  63, "%"],
             ["Wavetable",    0,  60, "%"],
-            ["Env Attack",   0, 100,  ""],
-            ["Env Decay",    0, 100,  ""],
+            ["Sub Mix",      0, 100, "%"],
+            ["Sub Detune", -99, 100, "%"],
+            ["Env Attack",   0, 100, "%"],
+            ["Env Decay",    0, 100, "%"],
             ["Env Amount", -99, 100, "%"]
           ]
     }
