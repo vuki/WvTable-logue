@@ -18,6 +18,7 @@ typedef struct {
         uint16_t env_decay;
         uint16_t env_amount;
     } saved, newpar;
+    uint8_t int_wavenum;
 } OscParams;
 
 static OscParams g_osc_params;
@@ -57,6 +58,7 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     (void)platform;
     (void)api;
     wtgen_init(&g_gen_state, k_samplerate, OVS_NONE);
+    g_osc_params.int_wavenum = 0;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t frames)
@@ -156,7 +158,13 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     switch (index) {
     case k_user_osc_param_id1:
         // Param 1: wavetable number
-        wtgen_set_wavetable(&g_gen_state, (value <= 60 ? (uint8_t)value : 0));
+        if (value < 61) {
+            wtgen_set_wavetable(&g_gen_state, (uint8_t)value);
+            g_osc_params.int_wavenum = 0;
+        } else if (value < 91) {
+            wtgen_set_wavetable(&g_gen_state, (uint8_t)(value - 61));
+            g_osc_params.int_wavenum = 1;
+        }
         break;
 
     case k_user_osc_param_id2:
@@ -187,12 +195,12 @@ void OSC_PARAM(uint16_t index, uint16_t value)
 
     case k_user_osc_param_shape:
         // Shape: main osc wave number
-        g_gen_state.osc[0].req_wave = value * 0.125f; // value/8
+        g_gen_state.osc[0].req_wave = (g_osc_params.int_wavenum) ? ((float)(value >> 3)) : (value * 0.125f);
         break;
 
     case k_user_osc_param_shiftshape:
         // Shift+Shape: sub osc wave number
-        g_gen_state.osc[1].req_wave = value * 0.125f; // value/8
+        g_gen_state.osc[1].req_wave = (g_osc_params.int_wavenum) ? ((float)(value >> 3)) : (value * 0.125f);
         break;
 
     default:

@@ -2,22 +2,25 @@ Logue Oscilator parameters
 
 
 Shape (0..1023)
-Base osc wave number, in steps of 1/8 (0.125) 
-wave = par / 8 
-par 0..511: base wavetable (wave 0..63.875)
-par 512..1023: upper wt, or repeat base wt (wave 64..127.875) 
+Base osc wave number, in steps of 1/8 (0.125)
+for wavetables < 61:
+  wave = par / 8 
+  par 0..511: base wavetable (wave 0..63.875)
+  par 512..1023: upper wt, or repeat base wt (wave 64..127.875)
+for wavetables >= 61:
+  wave = (par >> 3)  - only integer wave numbers, 0..127 
 
 Shift+Shape (0..1023)
 Sub osc wave number, in steps of 1/8 (0.125) 
-wave = par / 8 
-par 0..511: base wavetable (wave 0..63.875)
-par 512..1023: upper wt, or repeat base wt (wave 64..127.875) 
+Same as the main osc.
 
-Par1 (0..60%)
+Par1 (0..90%)
 Wavetable number
 0..29: base wavetable + upper wt
 30..59: base wt only
 60: upper wt only
+61..90: same as 0..29 (par-60), but only integer wave numbers
+        are selected with shape/shift+shape
 
 Par2 (0..100%)
 Sub osc mix
