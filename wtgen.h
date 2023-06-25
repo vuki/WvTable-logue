@@ -3,7 +3,7 @@
 #define _WTGEN_H
 
 /*
- * wtgen
+ * wtgen.h
  * Wavetable generator inspired by PPG Wave
  * Author: Grzegorz Szwoch (GregVuki)
  */

@@ -3,7 +3,7 @@
 #define _WTDEF_H
 
 /*
- * wtdef
+ * wtdef.h
  * Definition of PPG waves and wavetables
  * extracted from PPG WAVE 2.3 ROM
  */

@@ -1,3 +1,9 @@
+/*
+ * WvTable.cpp
+ * Wavetable generator inspired by PPG Wave.
+ * Main file for logue SDK plugin.
+ * Author: Grzegorz Szwoch (GregVuki)
+ */
 
 #include "userosc.h"
 #include "wtgen.h"

@@ -1,5 +1,5 @@
 /*
- * wtdef
+ * wtdef.cpp
  * Definition of PPG waves and wavetables
  * extracted from PPG WAVE 2.3 ROM
  */
