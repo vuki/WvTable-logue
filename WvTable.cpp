@@ -3,25 +3,17 @@
 #include "wtgen.h"
 #include "detune.h"
 
-typedef struct {
+static struct {
     uint16_t pitch;
     float frequency;
-    int32_t shape_lfo;
     float sub_freq_ratio;
     struct {
-        uint16_t main_wave;
-        uint16_t sub_wave;
-        uint16_t wavetable;
-        uint16_t sub_mix;
-        uint16_t sub_detune;
         uint16_t env_attack;
         uint16_t env_decay;
         uint16_t env_amount;
     } saved, newpar;
     uint8_t int_wavenum;
-} OscParams;
-
-static OscParams g_osc_params;
+} g_osc_params;
 static WtGenState g_gen_state;
 
 __fast_inline void update_frequency(uint16_t pitch)
@@ -33,9 +25,10 @@ __fast_inline void update_frequency(uint16_t pitch)
         const float f1 = osc_notehzf(note + 1);
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
     }
-    wtgen_set_frequency(&g_gen_state, freq);
-    wtgen_set_sub_frequency(&g_gen_state, freq * g_osc_params.sub_freq_ratio); // # TEMP - apply detune
+    set_main_frequency(&g_gen_state, freq);
+    set_sub_frequency(&g_gen_state, freq * g_osc_params.sub_freq_ratio);
     g_osc_params.pitch = pitch;
+    g_osc_params.frequency = freq;
 }
 
 __fast_inline float calc_envelope_rate(uint16_t par)
@@ -50,6 +43,7 @@ __fast_inline float calc_envelope_rate(uint16_t par)
         tenv = (float)(par - 34) * 0.0588235294117647f + 0.5f; // (2 * (v-34) / 34 + 0.5)
     else
         tenv = (float)(par - 68) * 0.25f + 2.5f; // (0.25 * (v-68) + 2.5)
+    // calculate the envelope rate = 1 / (fs * t)
     return 1.f / (g_gen_state.srate * tenv);
 }
 
@@ -57,11 +51,17 @@ void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
-    wtgen_init(&g_gen_state, k_samplerate, OVS_NONE);
+    wtgen_init(&g_gen_state, k_samplerate);
+    g_osc_params.pitch = 0;
+    g_osc_params.frequency = 0;
+    g_osc_params.sub_freq_ratio = 1.f;
+    g_osc_params.saved.env_amount = g_osc_params.newpar.env_amount = 0;
+    g_osc_params.saved.env_attack = g_osc_params.newpar.env_attack = 0;
+    g_osc_params.saved.env_decay = g_osc_params.newpar.env_decay = 0;
     g_osc_params.int_wavenum = 0;
 }
 
-void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t frames)
+void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const uint32_t nframes)
 {
     // check for pitch change
     if (params->pitch != g_osc_params.pitch) {
@@ -73,13 +73,13 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
     if (g_gen_state.wave_env_stage == ENV_S) {
         // LFO
         const float mod_lfo = (float)params->shape_lfo * 2.9802322387695312e-08f; // normalize to -64..64
-        const float denom = (frames == 64) ? 0.015625f : (frames == 32 ? 0.03125f : 1.f / frames);
+        const float denom = (nframes == 64) ? 0.015625f : (nframes == 32 ? 0.03125f : 1.f / nframes);
         mod_rate = (mod_lfo - g_gen_state.wave_mod) * denom;
     }
 
     // sample generation
-    q31_t* __restrict py = (q31_t*)yn;
-    const q31_t* py_e = py + frames;
+    q31_t* __restrict py = (q31_t*)framebuf;
+    const q31_t* py_e = py + nframes;
     for (; py != py_e;) {
         // wave modulation
         if (g_gen_state.wave_env_stage == ENV_S) {
@@ -103,7 +103,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* yn, const uint32_t
             g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
         }
         // sample generation
-        *(py++) = f32_to_q31(wt_generate(&g_gen_state));
+        *(py++) = f32_to_q31(generate(&g_gen_state));
     }
 }
 
@@ -159,23 +159,23 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     case k_user_osc_param_id1:
         // Param 1: wavetable number
         if (value < 61) {
-            wtgen_set_wavetable(&g_gen_state, (uint8_t)value);
+            set_wavetable(&g_gen_state, (uint8_t)value);
             g_osc_params.int_wavenum = 0;
         } else if (value < 91) {
-            wtgen_set_wavetable(&g_gen_state, (uint8_t)(value - 61));
+            set_wavetable(&g_gen_state, (uint8_t)(value - 61));
             g_osc_params.int_wavenum = 1;
         }
         break;
 
     case k_user_osc_param_id2:
         // Param2: sub osc mix
-        g_gen_state.sub_mix = (value <= 100 ? value : 0) * 0.01f;
+        g_gen_state.sub_mix = (value <= 100) ? (value * 0.01f) : 0;
         break;
 
     case k_user_osc_param_id3:
         // Param 3: sub osc detune
         g_osc_params.sub_freq_ratio = DETUNE_TABLE[(value <= 200) ? value : 0];
-        g_osc_params.pitch = 0; // force recalc on next frame
+        set_sub_frequency(&g_gen_state, g_osc_params.frequency * g_osc_params.sub_freq_ratio);
         break;
 
     case k_user_osc_param_id4:
