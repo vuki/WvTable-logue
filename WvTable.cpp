@@ -5,6 +5,8 @@
  * Author: Grzegorz Szwoch (GregVuki)
  */
 
+// #define OVS_2x
+
 #include "userosc.h"
 #include "wtgen.h"
 #include "detune.h"
@@ -57,7 +59,11 @@ void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
+#ifdef OVS_2x
+    wtgen_init(&g_gen_state, 2 * k_samplerate);
+#else
     wtgen_init(&g_gen_state, k_samplerate);
+#endif
     g_osc_params.pitch = 0;
     g_osc_params.frequency = 0;
     g_osc_params.sub_freq_ratio = 1.f;
@@ -87,29 +93,41 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
     q31_t* __restrict py = (q31_t*)framebuf;
     const q31_t* py_e = py + nframes;
     for (; py != py_e;) {
-        // wave modulation
-        if (g_gen_state.wave_env_stage == ENV_S) {
-            // LFO
-            g_gen_state.wave_mod += mod_rate;
-        } else if (g_gen_state.wave_env_stage == ENV_A) {
-            // envelope in attack stage
-            g_gen_state.wave_env_value += g_gen_state.wave_env_arate;
-            if (g_gen_state.wave_env_value > 1.f) {
-                g_gen_state.wave_env_value = 2.f - g_gen_state.wave_env_value;
-                g_gen_state.wave_env_stage = ENV_D;
+#ifdef OVS_2x
+        float yk[2];
+        uint8_t k;
+        for (k = 0; k < 2; k++) {
+#endif
+            // wave modulation
+            if (g_gen_state.wave_env_stage == ENV_S) {
+                // LFO
+                g_gen_state.wave_mod += mod_rate;
+            } else if (g_gen_state.wave_env_stage == ENV_A) {
+                // envelope in attack stage
+                g_gen_state.wave_env_value += g_gen_state.wave_env_arate;
+                if (g_gen_state.wave_env_value > 1.f) {
+                    g_gen_state.wave_env_value = 2.f - g_gen_state.wave_env_value;
+                    g_gen_state.wave_env_stage = ENV_D;
+                }
+                g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
+            } else if (g_gen_state.wave_env_stage == ENV_D) {
+                // envelope in decay stage
+                g_gen_state.wave_env_value += g_gen_state.wave_env_drate;
+                if (g_gen_state.wave_env_value < 0.f) {
+                    g_gen_state.wave_env_value = 0;
+                    g_gen_state.wave_env_stage = ENV_S;
+                }
+                g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
             }
-            g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
-        } else if (g_gen_state.wave_env_stage == ENV_D) {
-            // envelope in decay stage
-            g_gen_state.wave_env_value += g_gen_state.wave_env_drate;
-            if (g_gen_state.wave_env_value < 0.f) {
-                g_gen_state.wave_env_value = 0;
-                g_gen_state.wave_env_stage = ENV_S;
-            }
-            g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
+
+#ifdef OVS_2x
+            yk[k] = generate(&g_gen_state);
         }
+        *(py++) = f32_to_q31(0.5f * (yk[0] + yk[1]));
+#else
         // sample generation
         *(py++) = f32_to_q31(generate(&g_gen_state));
+#endif
     }
 }
 
