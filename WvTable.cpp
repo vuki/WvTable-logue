@@ -94,7 +94,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
     const q31_t* py_e = py + nframes;
     for (; py != py_e;) {
 #ifdef OVS_2x
-        float yk[2];
+        static float yk[2];
         uint8_t k;
         for (k = 0; k < 2; k++) {
 #endif

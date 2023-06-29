@@ -59,15 +59,16 @@ DDEFS := -D$(MCU_MODEL) -DCORTEX_USE_FPU=TRUE -DARM_MATH_CM4 -D__FPU_PRESENT
 
 COPT := -std=c11
 CXXOPT := -std=c++11 -fno-rtti -fno-exceptions -fno-non-call-exceptions
+#CXXOPT += -fstack-usage
+#CXXOPT += -fno-threadsafe-statics
 
 LDOPT := -Xlinker --just-symbols=$(LDDIR)/osc_api.syms
 
-CWARN := -W -Wall -Wextra
-CXXWARN := -W -Wall -Wextra
+CWARN := -W -Wall -Wextra -Wdouble-promotion
+CXXWARN := -W -Wall -Wextra -Wdouble-promotion
 
 FPU_OPTS := -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -fcheck-new
 
-# OPT := -g -O3 -mlittle-endian 
 OPT := -g -Os -mlittle-endian 
 OPT += $(FPU_OPTS)
 #OPT += -flto
@@ -186,7 +187,7 @@ $(CXXOBJS) : $(OBJDIR)/%.o : %.cpp $(UHEADERS) Makefile
 
 $(BUILDDIR)/%.elf: $(OBJS) $(LDSCRIPT)
 	@echo Linking $@
-	$(LD) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
+	@$(LD) $(OBJS) $(LDFLAGS) $(LIBS) -o $@
 
 %.hex: %.elf
 	@echo Creating $@

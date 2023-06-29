@@ -215,7 +215,7 @@ _INLINE float generate(WtGenState* __restrict state)
 
     // generate 4 values for interpolation
     // (main_wave1, main_wave2, sub_wave1, sub_wave2)
-    float y[4];
+    static float y[4];
     const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
     for (k = 0; k < 4; k++) {
         const uint8_t nosc = k >> 1; // 0->0, 1->0, 2->1, 3->1
