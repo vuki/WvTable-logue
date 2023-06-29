@@ -205,18 +205,11 @@ _INLINE void set_wave_number(WtState* __restrict state, float nwave)
 _INLINE float generate(WtGenState* __restrict state)
 {
     // wave number modulation
-    uint8_t k;
-    for (k = 0; k < 2; k++) {
-        const float nwave = state->osc[k].req_wave + state->wave_mod;
-        if (nwave != state->osc[k].set_wave) {
-            set_wave_number(&state->osc[k], nwave);
-        }
-    }
-
     // generate 4 values for interpolation
     // (main_wave1, main_wave2, sub_wave1, sub_wave2)
     static float y[4];
     const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
+    uint8_t k;
     for (k = 0; k < 4; k++) {
         const uint8_t nosc = k >> 1; // 0->0, 1->0, 2->1, 3->1
         const uint32_t phase = state->osc[nosc].phase;

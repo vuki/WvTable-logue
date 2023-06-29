@@ -52,7 +52,8 @@ __fast_inline float calc_envelope_rate(uint16_t par)
     else
         tenv = (float)(par - 68) * 0.25f + 2.5f; // (0.25 * (v-68) + 2.5)
     // calculate the envelope rate = 1 / (fs * t)
-    return 1.f / (g_gen_state.srate * tenv);
+    // envelope operates at 48000 Hz, not oversampled
+    return 1.f / (k_samplerate * tenv);
 }
 
 void OSC_INIT(uint32_t platform, uint32_t api)
@@ -93,34 +94,42 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
     q31_t* __restrict py = (q31_t*)framebuf;
     const q31_t* py_e = py + nframes;
     for (; py != py_e;) {
+        // wave modulation
+        if (g_gen_state.wave_env_stage == ENV_S) {
+            // LFO
+            g_gen_state.wave_mod += mod_rate;
+        } else if (g_gen_state.wave_env_stage == ENV_A) {
+            // envelope in attack stage
+            g_gen_state.wave_env_value += g_gen_state.wave_env_arate;
+            if (g_gen_state.wave_env_value > 1.f) {
+                g_gen_state.wave_env_value = 2.f - g_gen_state.wave_env_value;
+                g_gen_state.wave_env_stage = ENV_D;
+            }
+            g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
+        } else if (g_gen_state.wave_env_stage == ENV_D) {
+            // envelope in decay stage
+            g_gen_state.wave_env_value += g_gen_state.wave_env_drate;
+            if (g_gen_state.wave_env_value < 0.f) {
+                g_gen_state.wave_env_value = 0;
+                g_gen_state.wave_env_stage = ENV_S;
+            }
+            g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
+        }
+
+        // update wave number
+        const float nwave_main = g_gen_state.osc[0].req_wave + g_gen_state.wave_mod;
+        if (nwave_main != g_gen_state.osc[0].set_wave) {
+            set_wave_number(&g_gen_state.osc[0], nwave_main);
+        }
+        const float nwave_sub = g_gen_state.osc[1].req_wave + g_gen_state.wave_mod;
+        if (nwave_sub != g_gen_state.osc[1].set_wave) {
+            set_wave_number(&g_gen_state.osc[1], nwave_sub);
+        }
+
 #ifdef OVS_2x
         static float yk[2];
         uint8_t k;
         for (k = 0; k < 2; k++) {
-#endif
-            // wave modulation
-            if (g_gen_state.wave_env_stage == ENV_S) {
-                // LFO
-                g_gen_state.wave_mod += mod_rate;
-            } else if (g_gen_state.wave_env_stage == ENV_A) {
-                // envelope in attack stage
-                g_gen_state.wave_env_value += g_gen_state.wave_env_arate;
-                if (g_gen_state.wave_env_value > 1.f) {
-                    g_gen_state.wave_env_value = 2.f - g_gen_state.wave_env_value;
-                    g_gen_state.wave_env_stage = ENV_D;
-                }
-                g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
-            } else if (g_gen_state.wave_env_stage == ENV_D) {
-                // envelope in decay stage
-                g_gen_state.wave_env_value += g_gen_state.wave_env_drate;
-                if (g_gen_state.wave_env_value < 0.f) {
-                    g_gen_state.wave_env_value = 0;
-                    g_gen_state.wave_env_stage = ENV_S;
-                }
-                g_gen_state.wave_mod = g_gen_state.wave_env_value * g_gen_state.wave_env_amount;
-            }
-
-#ifdef OVS_2x
             yk[k] = generate(&g_gen_state);
         }
         *(py++) = f32_to_q31(0.5f * (yk[0] + yk[1]));
