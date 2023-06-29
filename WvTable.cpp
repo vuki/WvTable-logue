@@ -6,6 +6,7 @@
  */
 
 // #define OVS_2x
+// #define OVS_4x
 
 #include "userosc.h"
 #include "wtgen.h"
@@ -60,7 +61,9 @@ void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
-#ifdef OVS_2x
+#if defined(OVS_4x)
+    wtgen_init(&g_gen_state, 4 * k_samplerate);
+#elif defined(OVS_2x)
     wtgen_init(&g_gen_state, 2 * k_samplerate);
 #else
     wtgen_init(&g_gen_state, k_samplerate);
@@ -126,7 +129,14 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
             set_wave_number(&g_gen_state.osc[1], nwave_sub);
         }
 
-#ifdef OVS_2x
+#if defined(OVS_4x)
+        static float yk[4];
+        uint8_t k;
+        for (k = 0; k < 4; k++) {
+            yk[k] = generate(&g_gen_state);
+        }
+        *(py++) = f32_to_q31(0.25f * (yk[0] + yk[1] + yk[2] + yk[3]));
+#elif defined(OVS_2x)
         static float yk[2];
         uint8_t k;
         for (k = 0; k < 2; k++) {
