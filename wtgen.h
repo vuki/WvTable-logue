@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include "wtdef.h"
+#include "compat.h"
 
 #define MAXPHASE 128.f
 #define MAX_TABLE 61
@@ -19,22 +20,6 @@
 #define NOWAVE -1.f
 #define Q25TOF 2.9802322387695312e-08f
 #define Q24TOF 5.960464477539063e-08f
-
-#ifndef NO_FORCE_INLINE
-#if defined(__GNUC__)
-#ifndef __clang__
-#define _INLINE static inline __attribute__((always_inline, optimize("Ofast")))
-#else
-#define _INLINE static inline __attribute__((always_inline))
-#endif
-#elif defined(_MSC_VER)
-#define _INLINE static inline __forceinline
-#else
-#define _INLINE static inline
-#endif
-#else
-#define _INLINE static inline
-#endif // #ifndef NO_FORCE_INLINE
 
 typedef enum { ENV_S, ENV_A, ENV_D } EnvStage;
 

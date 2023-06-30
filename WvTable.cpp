@@ -12,6 +12,11 @@
 #include "wtgen.h"
 #include "detune.h"
 
+#ifdef OVS_2x
+#include "decimator.h"
+DecimatorState decimator;
+#endif
+
 static struct {
     uint16_t pitch;
     float frequency;
@@ -65,6 +70,7 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     wtgen_init(&g_gen_state, 4 * k_samplerate);
 #elif defined(OVS_2x)
     wtgen_init(&g_gen_state, 2 * k_samplerate);
+    decimator_reset(&decimator);
 #else
     wtgen_init(&g_gen_state, k_samplerate);
 #endif
@@ -142,7 +148,9 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
         for (k = 0; k < 2; k++) {
             yk[k] = generate(&g_gen_state);
         }
-        *(py++) = f32_to_q31(0.5f * (yk[0] + yk[1]));
+        // const float ydec = decimator_do(&decimator, yk[0], yk[1]);
+        const float ydec = 0.5f * (yk[0] + yk[1]);
+        *(py++) = f32_to_q31(ydec);
 #else
         // sample generation
         *(py++) = f32_to_q31(generate(&g_gen_state));
