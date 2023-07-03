@@ -10,6 +10,7 @@
 
 #include <stdint.h>
 #include "wtdef.h"
+#include "decimator.h"
 #include "compat.h"
 
 #define MAXPHASE 128.f
@@ -288,6 +289,150 @@ _INLINE float generate(WtGenState* __restrict state)
     const float y1 = (1.f - state->osc[0].alpha_w) * y[0] + state->osc[0].alpha_w * y[1];
     const float y2 = (1.f - state->osc[1].alpha_w) * y[2] + state->osc[1].alpha_w * y[3];
     return ((1.f - state->sub_mix) * y1 + state->sub_mix * y2) * 0.0078125f; // * 1/128;
+}
+
+// Test function for 2x oversampling
+#define OVS 2
+
+_INLINE float generate_ovs(WtGenState* __restrict state, DecimatorState* __restrict decimator)
+{
+    // phase values
+    uint32_t osc_phase[OVS][2];
+    uint8_t n;
+    for (n = 0; n < OVS; n++) {
+        osc_phase[n][0] = state->osc[0].phase;
+        osc_phase[n][1] = state->osc[1].phase;
+        state->osc[0].phase += state->osc[0].step;
+        state->osc[1].phase += state->osc[1].step;
+    }
+
+    // generate 4 values for interpolation
+    // (main_wave1, main_wave2, sub_wave1, sub_wave2)
+    float y[OVS][4];
+    const uint8_t nwave[4] = { state->osc[0].wave1, state->osc[0].wave2, state->osc[1].wave1, state->osc[1].wave2 };
+    uint8_t k;
+    for (k = 0; k < 4; k++) {
+        const uint8_t nosc = k >> 1; // 0->0, 1->0, 2->1, 3->1
+        // const uint32_t phase = state->osc[nosc].phase;
+        const uint8_t nwavek = nwave[k];
+        if (nwavek < NWAVES) {
+            // memory wave - interpolate between samples
+            for (n = 0; n < OVS; n++) {
+                const uint32_t phase = osc_phase[n][nosc];
+                const float alpha = (float)(phase & 0x1ffffff) * Q25TOF;
+                const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
+                const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
+#if 0
+                const int8_t val1
+                    = (int8_t)(((pos1 & 0x40) ? (~WAVES[nwavek][~pos1 & 0x3F]) : (WAVES[nwavek][pos1 & 0x3F])) ^ 0x80);
+                const int8_t val2
+                    = (int8_t)(((pos2 & 0x40) ? (~WAVES[nwavek][~pos2 & 0x3F]) : (WAVES[nwavek][pos2 & 0x3F])) ^ 0x80);
+#else
+                const uint8_t npos1 = (pos1 ^ ((pos1 & 0x40) - ((pos1 & 0x40) >> 6))) & 0x3f;
+                const int8_t val1 = (int8_t)((WAVES[nwavek][npos1] ^ (-((pos1 & 0x40) >> 6))) ^ 0x80);
+                const uint8_t npos2 = (pos2 ^ ((pos2 & 0x40) - ((pos2 & 0x40) >> 6))) & 0x3f;
+                const int8_t val2 = (int8_t)((WAVES[nwavek][npos2] ^ (-((pos2 & 0x40) >> 6))) ^ 0x80);
+#endif
+                y[n][k] = (1.f - alpha) * val1 + alpha * val2;
+            }
+        } else if (nwavek == STD_TRIANGLE) {
+            // standard wave: triangle
+            for (n = 0; n < OVS; n++) {
+                const float pos = (float)(osc_phase[n][nosc]) * Q25TOF;
+                y[n][k] = (pos < 64.f) ? (-96.f + 3.f * pos) : (96.f - 3.f * (pos - 64.f));
+            }
+        } else if (nwavek == STD_PULSE) {
+            // standard wave: pulse
+            for (n = 0; n < OVS; n++) {
+                const float pos = (float)osc_phase[n][nosc] * Q25TOF;
+                y[n][k] = (pos < 124.f) ? -64.f : 127.f;
+            }
+        } else if (nwavek == STD_SQUARE) {
+            // standard wave: square (with PolyBLEP)
+            for (n = 0; n < OVS; n++) {
+                const float pos = (float)osc_phase[n][nosc] * Q25TOF;
+                const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
+                const float rstep = (float)(state->osc[nosc].recip_step);
+                y[n][k] = (pos < 64.f) ? -96.f : 96.f;
+                if (pos < phase_step) {
+                    const float t = pos * rstep;
+                    y[n][k] -= (t + t - t * t - 1.f) * 96.f;
+                } else if (((64.f - phase_step) < pos) && (pos < 64.f)) {
+                    const float t = (pos - 64.f) * rstep;
+                    y[n][k] += (t * t + t + t + 1.f) * 96.f;
+                } else if ((64.f <= pos) && (pos < (64.f + phase_step))) {
+                    const float t = (pos - 64.f) * rstep;
+                    y[n][k] += (t + t - t * t - 1.f) * 96.f;
+                } else if (pos > 128 - phase_step) {
+                    const float t = (pos - 128.f) * rstep;
+                    y[n][k] -= (t * t + t + t + 1.f) * 96.f;
+                }
+            }
+        } else if (nwavek == STD_SAW) {
+            // standard wave: sawtooth (with PolyBLEP)
+            for (n = 0; n < OVS; n++) {
+                const float pos = (float)osc_phase[n][nosc] * Q25TOF;
+                const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
+                const float rstep = (float)(state->osc[nosc].recip_step);
+                y[n][k] = -64.f + pos;
+                if (pos < phase_step) {
+                    const float t = pos * rstep;
+                    y[n][k] -= (t + t - t * t - 1.f) * 64.f;
+                } else if (pos > 128.f - phase_step) {
+                    const float t = (pos - 128.f) * rstep;
+                    y[n][k] -= (t * t + t + t + 1.f) * 64.f;
+                }
+            }
+        } else if (nwavek == WAVE_SYNC) {
+            // wavetable 28: sync wave
+            const uint8_t nwave = (int8_t)state->osc[nosc].nwave;
+            const uint32_t span = (uint32_t)(WT28_SPAN[nwave]) << 24; // UQ8.24
+            for (n = 0; n < OVS; n++) {
+                uint32_t pos = (osc_phase[n][nosc] >> 1) % span; // UQ8.24
+                y[n][k] = (1.f + nwave * 0.0859375f) * (float)pos * Q24TOF - 64.f;
+            }
+        } else if (nwavek == WAVE_STEP) {
+            // wavetable 29: step wave (with PolyBLEP)
+            const float phase_step = (float)(state->osc[nosc].step) * Q25TOF;
+            const float rstep = (float)(state->osc[nosc].recip_step);
+            const float edge = 69.f + state->osc[nosc].nwave;
+            for (n = 0; n < OVS; n++) {
+                const float pos = (float)osc_phase[n][nosc] * Q25TOF;
+                y[n][k] = (pos < edge) ? 32.f : -32.f;
+                if (pos < phase_step) {
+                    const float t = pos * rstep;
+                    y[n][k] += (t + t - t * t - 1.f) * 32.f;
+                } else if (((edge - phase_step) < pos) && (pos < edge)) {
+                    const float t = (pos - edge) * rstep;
+                    y[n][k] -= (t * t + t + t + 1.f) * 32.f;
+                } else if ((edge <= pos) && (pos < (edge + phase_step))) {
+                    const float t = (pos - edge) * rstep;
+                    y[n][k] -= (t + t - t * t - 1.f) * 32.f;
+                } else if (pos > 128 - phase_step) {
+                    const float t = (pos - 128.f) * rstep;
+                    y[n][k] += (t * t + t + t + 1.f) * 32.f;
+                }
+            }
+        } else {
+            for (n = 0; n < OVS; n++) {
+                y[n][k] = 0;
+            }
+        }
+    }
+
+    // interpolation
+    for (n = 0; n < OVS; n++) {
+        const float y1 = (1.f - state->osc[0].alpha_w) * y[n][0] + state->osc[0].alpha_w * y[n][1];
+        const float y2 = (1.f - state->osc[1].alpha_w) * y[n][2] + state->osc[1].alpha_w * y[n][3];
+        y[n][0] = ((1.f - state->sub_mix) * y1 + state->sub_mix * y2) * 0.0078125f; // * 1/128;
+    }
+
+#if defined(OVS) && (OVS == 2)
+    return decimator_do(decimator, y[0][0], y[1][0]);
+#else
+    (void)decimator;
+    return y[0][0];
+#endif
 }
 
 #endif

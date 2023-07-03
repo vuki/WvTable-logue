@@ -143,20 +143,67 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
         }
         *(py++) = f32_to_q31(0.25f * (yk[0] + yk[1] + yk[2] + yk[3]));
 #elif defined(OVS_2x)
-        static float yk[2];
-        uint8_t k;
-        for (k = 0; k < 2; k++) {
-            yk[k] = generate(&g_gen_state);
-        }
-        // const float ydec = decimator_do(&decimator, yk[0], yk[1]);
-        const float ydec = 0.5f * (yk[0] + yk[1]);
-        *(py++) = f32_to_q31(ydec);
+        *(py++) = f32_to_q31(generate_ovs(&g_gen_state, &decimator));
 #else
         // sample generation
         *(py++) = f32_to_q31(generate(&g_gen_state));
 #endif
     }
 }
+
+#if 0
+void OSC_CYCLE2(const user_osc_param_t* const params, int32_t* framebuf, const uint32_t nframes)
+{
+    // Test function, fixed point
+
+    // check for pitch change
+    if (params->pitch != g_osc_params.pitch) {
+        update_frequency(params->pitch);
+    }
+
+    static int32_t yk[4];
+    static int32_t yn[2];
+    uint8_t k, n;
+    const uint8_t nwave[4] = { 79, 51, 52, 53 };
+    WtGenState* state = &g_gen_state;
+    const int32_t alphaw_1 = 0x800; // 0.5 in Q12
+    const int32_t alphaw_2 = 0x666; // 0.4 in Q12
+    const int32_t sub_mix = 0x999; // 0.6 in Q12
+
+    q31_t* __restrict py = (q31_t*)framebuf;
+    const q31_t* py_e = py + nframes;
+    for (; py != py_e;) {
+
+        for (n = 0; n < 2; n++) {
+            for (k = 0; k < 4; k++) {
+                const uint8_t nosc = k >> 1; // 0->0, 1->0, 2->1, 3->1
+                const uint32_t phase = state->osc[nosc].phase;
+                const uint8_t nwavek = nwave[k];
+                const int32_t alpha = (int32_t)(phase & 0x1ffffff) >> 1; // Q24
+                const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
+                const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
+                const uint8_t* const pwave = WAVES[nwavek];
+                const int8_t val1 = (int8_t)(((pos1 & 0x40) ? (~pwave[~pos1 & 0x3F]) : (pwave[pos1])) ^ 0x80);
+                const int8_t val2 = (int8_t)(((pos2 & 0x40) ? (~pwave[~pos2 & 0x3F]) : (pwave[pos2])) ^ 0x80);
+                yk[k] = (0x1000000 - alpha) * val1 + alpha * val2; // Q7.24
+            }
+            // wave interpolation
+            yk[0] = (0x1000 - alphaw_1) * (yk[0] >> 12) + alphaw_1 * (yk[1] >> 12);
+            yk[1] = (0x1000 - alphaw_2) * (yk[2] >> 12) + alphaw_2 * (yk[3] >> 12);
+            // osc interpolation
+            yn[n] = (0x1000 - sub_mix) * (yk[0] >> 12) + sub_mix * (yk[1] >> 12);
+            state->osc[0].phase += state->osc[0].step;
+            state->osc[1].phase += state->osc[1].step;
+        }
+#if defined(OVS_2x)
+        const float ydec = decimator_do(&decimator, q31_to_f32(yn[0]), q31_to_f32(yn[1]));
+        *(py++) = f32_to_q31(ydec);
+#else
+        *(py++) = (yn[0] >> 1) + (yn[1] >> 1); // TEST
+#endif
+    }
+}
+#endif
 
 void OSC_NOTEON(const user_osc_param_t* const params)
 {
