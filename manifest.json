@@ -8,11 +8,9 @@
         "prg_id" : 0,
         "version" : "1.0-1",
         "name" : "WvTable",
-        "num_param" : 6,
+        "num_param" : 4,
         "params" : [
-            ["Wavetable",    0,  90, "%"],
-            ["Sub Mix",      0, 100, "%"],
-            ["Sub Detune", -99, 100, "%"],
+            ["Wavetable",    0,  60, "%"],
             ["Env Attack",   0, 100, "%"],
             ["Env Decay",    0, 100, "%"],
             ["Env Amount", -99, 100, "%"]
