@@ -10,24 +10,19 @@
 
 #include "userosc.h"
 #include "wtgen.h"
-#include "detune.h"
-
-#ifdef OVS_2x
-#include "decimator.h"
-DecimatorState decimator;
-#endif
 
 static struct {
     uint16_t pitch;
     float frequency;
-    float sub_freq_ratio;
     struct {
         uint16_t env_attack;
         uint16_t env_decay;
         uint16_t env_amount;
     } saved, newpar;
-    uint8_t int_wavenum;
+    uint32_t nwave_int; // 10 bit
+    uint32_t nwave_frac; // 10 bit
 } g_osc_params;
+
 static WtGenState g_gen_state;
 
 __fast_inline void update_frequency(uint16_t pitch)
@@ -39,8 +34,7 @@ __fast_inline void update_frequency(uint16_t pitch)
         const float f1 = osc_notehzf(note + 1);
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
     }
-    set_main_frequency(&g_gen_state, freq);
-    set_sub_frequency(&g_gen_state, freq * g_osc_params.sub_freq_ratio);
+    set_frequency(&g_gen_state, freq);
     g_osc_params.pitch = pitch;
     g_osc_params.frequency = freq;
 }
@@ -66,21 +60,14 @@ void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
-#if defined(OVS_4x)
-    wtgen_init(&g_gen_state, 4 * k_samplerate);
-#elif defined(OVS_2x)
-    wtgen_init(&g_gen_state, 2 * k_samplerate);
-    decimator_reset(&decimator);
-#else
     wtgen_init(&g_gen_state, k_samplerate);
-#endif
     g_osc_params.pitch = 0;
     g_osc_params.frequency = 0;
-    g_osc_params.sub_freq_ratio = 1.f;
     g_osc_params.saved.env_amount = g_osc_params.newpar.env_amount = 0;
     g_osc_params.saved.env_attack = g_osc_params.newpar.env_attack = 0;
     g_osc_params.saved.env_decay = g_osc_params.newpar.env_decay = 0;
-    g_osc_params.int_wavenum = 0;
+    g_osc_params.nwave_int = 0;
+    g_osc_params.nwave_frac = 0;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const uint32_t nframes)
@@ -89,6 +76,10 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
     if (params->pitch != g_osc_params.pitch) {
         update_frequency(params->pitch);
     }
+
+    // base wave number
+    uint32_t base_nwave_fp = g_osc_params.nwave_int | g_osc_params.nwave_frac;
+    float base_nwave_fl = base_nwave_fp * Q25TOF;
 
     // wave modulation
     float mod_rate = 0;
@@ -126,37 +117,19 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
         }
 
         // update wave number
-        const float nwave_main = g_gen_state.osc[0].req_wave + g_gen_state.wave_mod;
-        if (nwave_main != g_gen_state.osc[0].set_wave) {
-            set_wave_number(&g_gen_state.osc[0], nwave_main);
-        }
-        const float nwave_sub = g_gen_state.osc[1].req_wave + g_gen_state.wave_mod;
-        if (nwave_sub != g_gen_state.osc[1].set_wave) {
-            set_wave_number(&g_gen_state.osc[1], nwave_sub);
+        const float nwave_new = base_nwave_fl + g_gen_state.wave_mod;
+        if (nwave_new != g_gen_state.osc.set_wave) {
+            set_wave_number(&g_gen_state.osc, nwave_new);
         }
 
-#if defined(OVS_4x)
-        static float yk[4];
-        uint8_t k;
-        for (k = 0; k < 4; k++) {
-            yk[k] = generate(&g_gen_state);
-        }
-        *(py++) = f32_to_q31(0.25f * (yk[0] + yk[1] + yk[2] + yk[3]));
-#elif defined(OVS_2x)
-        *(py++) = f32_to_q31(generate_ovs(&g_gen_state, &decimator));
-#else
         // sample generation
         *(py++) = f32_to_q31(generate(&g_gen_state));
-#endif
     }
 }
 
 void OSC_NOTEON(const user_osc_param_t* const params)
 {
-    g_gen_state.osc[0].phase = 0;
-    g_gen_state.osc[1].phase = 0;
-    g_gen_state.wave_mod = 0;
-    g_gen_state.wave_env_value = 0;
+    wtgen_reset(&g_gen_state);
 
     // wave envelope times
     if (g_osc_params.newpar.env_attack != g_osc_params.saved.env_attack) {
@@ -204,47 +177,34 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         // Param 1: wavetable number
         if (value < 61) {
             set_wavetable(&g_gen_state, (uint8_t)value);
-            g_osc_params.int_wavenum = 0;
-        } else if (value < 91) {
-            set_wavetable(&g_gen_state, (uint8_t)(value - 61));
-            g_osc_params.int_wavenum = 1;
         }
         break;
 
     case k_user_osc_param_id2:
-        // Param2: sub osc mix
-        g_gen_state.sub_mix = (value <= 100) ? (value * 0.01f) : 0;
-        break;
-
-    case k_user_osc_param_id3:
-        // Param 3: sub osc detune
-        g_osc_params.sub_freq_ratio = DETUNE_TABLE[(value <= 200) ? value : 0];
-        set_sub_frequency(&g_gen_state, g_osc_params.frequency * g_osc_params.sub_freq_ratio);
-        break;
-
-    case k_user_osc_param_id4:
         // Param4: wave envelope attack time (0..100)
         g_osc_params.newpar.env_attack = value;
         break;
 
-    case k_user_osc_param_id5:
+    case k_user_osc_param_id3:
         // Param5: wave envelope decay time (0..100)
         g_osc_params.newpar.env_decay = value;
         break;
 
-    case k_user_osc_param_id6:
+    case k_user_osc_param_id4:
         // Param6: wave envelope amount (1..200)
         g_osc_params.newpar.env_amount = value;
         break;
 
     case k_user_osc_param_shape:
-        // Shape: main osc wave number
-        g_gen_state.osc[0].req_wave = (g_osc_params.int_wavenum) ? ((float)(value >> 3)) : (value * 0.125f);
+        // Shape: integer part of the wave number
+        // round 10-bit val to UQ7, convert to UQ7.25
+        g_osc_params.nwave_int = ((uint32_t)(value >> 3)) << 25;
         break;
 
     case k_user_osc_param_shiftshape:
-        // Shift+Shape: sub osc wave number
-        g_gen_state.osc[1].req_wave = (g_osc_params.int_wavenum) ? ((float)(value >> 3)) : (value * 0.125f);
+        // Shift+Shape: fractional part of the wave number
+        // 10 bit value to UQ7.5
+        g_osc_params.nwave_frac = ((uint32_t)value) << 15;
         break;
 
     default:
