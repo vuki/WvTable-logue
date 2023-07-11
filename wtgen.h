@@ -322,7 +322,7 @@ _INLINE float generate_ovs(WtGenState* __restrict state, DecimatorState* __restr
                 const float alpha = (float)(phase & 0x1ffffff) * Q25TOF;
                 const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
                 const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
-#if 0
+#if 1
                 const int8_t val1
                     = (int8_t)(((pos1 & 0x40) ? (~WAVES[nwavek][~pos1 & 0x3F]) : (WAVES[nwavek][pos1 & 0x3F])) ^ 0x80);
                 const int8_t val2
