@@ -219,7 +219,7 @@ _INLINE float generate(WtGenState* __restrict state)
             if (nwavek < NWAVES) {
                 // memory wave - interpolate between samples
                 const float alpha = (float)(phase & 0x1ffffff) * Q25TOF;
-#if 1
+#if 0
                 const uint8_t pos1 = (uint8_t)(phase >> 25); // UQ7
                 const uint8_t pos2 = (pos1 + 1) & 0x7f; // UQ7
                 const uint8_t* const pwave = WAVES[nwavek];
@@ -227,6 +227,35 @@ _INLINE float generate(WtGenState* __restrict state)
                 const int8_t val2 = (int8_t)(((pos2 & 0x40) ? (~pwave[~pos2 & 0x3F]) : (pwave[pos2])) ^ 0x80);
                 y[n][k] = (1.f - alpha) * val1 + alpha * val2;
 #else
+                // Version with more operations and branching,
+                // but one 16-bit read is used instead of two 8-bit reads.
+                // Warning: some reads will be unaligned and they will be slower.
+                const uint8_t pos = (uint8_t)(phase >> 25); // UQ7
+                const uint8_t* const pwave = WAVES[nwavek];
+                if (!(pos & 0x40)) {
+                    // pos 0..63
+                    if (pos < 63) {
+                        const uint16_t val16 = *((uint16_t*)(pwave + pos));
+                        const uint8_t* pair = (const uint8_t*)(&val16);
+                        y[n][k] = (1.f - alpha) * pair[0] + alpha * pair[1];
+                    } else {
+                        // pos == 63, edge case
+                        const uint8_t val = pwave[63];
+                        y[n][k] = (1.f - alpha) * val + alpha * (uint8_t)(~val);
+                    }
+                } else {
+                    // pos 64..127
+                    if (pos > 0) {
+                        const uint8_t pos2 = ~pos & 0x3F;
+                        const uint16_t val16 = *((uint16_t*)(pwave + pos2 - 1));
+                        const uint8_t* pair = (const uint8_t*)(&val16);
+                        y[n][k] = (1.f - alpha) * (uint8_t)(~pair[1]) + alpha * (uint8_t)(~pair[0]);
+                    } else {
+                        // pos == 0, edge case
+                        const uint8_t val = *pwave;
+                        y[n][k] = (1.f - alpha) * (uint8_t)(~val) + alpha * val;
+                    }
+                }
 #endif
             } else if (nwavek == STD_TRIANGLE) {
                 // standard wave: triangle
