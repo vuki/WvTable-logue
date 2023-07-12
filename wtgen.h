@@ -2,7 +2,7 @@
 #ifndef _WTGEN_H
 #define _WTGEN_H
 
-#ifdef OVS_2x
+#if defined(OVS_2x)
 #define OVS 2
 #elif defined(OVS_4x)
 #define OVS 4
@@ -23,23 +23,21 @@
 
 #define MAXPHASE 128.f
 #define MAX_TABLE 61
-#define MAX_BASE_WAVE 64.f
-#define MAX_UPPER_WAVE 128.f
-#define EPS 1e-5f
-#define NOWAVE -1.f
 #define Q25TOF 2.9802322387695312e-08f
 #define Q24TOF 5.960464477539063e-08f
+#define MASK_25 0x1ffffff
+#define MASK_6 0x3f
+#define MASK_BIT31 0x80000000
 
 typedef enum { ENV_S, ENV_A, ENV_D } EnvStage;
 
 typedef struct {
-    float nwave; // normalized wave number, 0..64
-    float set_wave; // last wave number (raw) that was set
-    float req_wave; // wave number (raw) that the caller wants to set
+    // float req_wave; // wave number (raw) that the caller wants to set
     uint8_t ntable; // wavetable number that was set, 0..30
     uint8_t wtn; // currently used wavetable: base or upper
     uint8_t use_upper; // if not 0, use upper wavetable at waves 64..127
     uint8_t wt_def_pos; // position of wave definition for stored waves
+    uint8_t nwave; // wave position in wavetable, integer 0..63
     uint8_t wave1; // number of the first stored wave (before the wave)
     uint8_t wave2; // number of the second stored wave (after the wave)
     float alpha_w; // linear interpolation coefficient
@@ -73,13 +71,12 @@ void wtgen_init(WtGenState* __restrict state, float srate)
     state->srate = srate;
     state->osc.ntable = 0;
     state->osc.wtn = 0;
-    state->osc.nwave = 0;
-    state->osc.set_wave = NOWAVE;
-    state->osc.req_wave = 0;
+    // state->osc.req_wave = 0;
     state->osc.use_upper = 1;
     state->osc.wt_def_pos = 0;
     state->osc.wave1 = WT_POS[0][1];
     state->osc.wave2 = WT_POS[1][1];
+    state->osc.nwave = 0;
     state->osc.alpha_w = 0;
     state->osc.phase = 0;
     state->osc.step = 0x2000000;
@@ -136,70 +133,60 @@ _INLINE void set_wavetable(WtGenState* __restrict state, uint8_t ntable)
     if (ntable != state->osc.ntable) {
         state->osc.ntable = ntable;
         state->osc.use_upper = use_upper;
-        state->osc.set_wave = NOWAVE;
         state->osc.wt_def_pos = 0;
     }
 }
 
 /*  set_wave_number
     Set the wave number
-    nwave: requested wave number (float)
+    wavenum: requested wave number, Q7.25
 */
-_INLINE void set_wave_number(WtState* __restrict state, float nwave)
+_INLINE void set_wave_number(WtState* __restrict state, uint32_t wavenum)
 {
-    // if (state->set_wave == nwave)
-    //     return; // already set
-    state->set_wave = nwave;
+
     const uint8_t old_wtn = state->wtn;
-    while (nwave >= MAX_UPPER_WAVE)
-        nwave -= MAX_UPPER_WAVE;
-    while (nwave < 0)
-        nwave += MAX_UPPER_WAVE;
-    if (nwave < MAX_BASE_WAVE) {
-        state->wtn = state->ntable;
-    } else {
-        state->wtn = state->use_upper ? WT_UPPER : state->ntable;
-        nwave -= MAX_BASE_WAVE;
-    }
-    if (nwave == state->nwave && state->wtn == old_wtn)
-        return; // same wave and wavetable
+    state->wtn = (state->use_upper && (wavenum & MASK_BIT31)) ? WT_UPPER : state->ntable;
+    const uint8_t nwave_i = (wavenum >> 25) & MASK_6; // integer part of the wave number, 0..63 (UQ6)
+    const float nwave_f = (float)(wavenum & MASK_25) * Q25TOF; // full wave number (0..64) as float
+    state->nwave = nwave_i;
     if (state->wtn != old_wtn)
         state->wt_def_pos = 0;
-    if (nwave < STANDARD_WAVES && state->wtn != WT_SYNC && state->wtn != WT_STEP) {
+    if (nwave_i < STANDARD_WAVES && state->wtn != WT_SYNC && state->wtn != WT_STEP) {
         // select from stored waves
+        // TODO: rewrite using 16-bit read (rearrange the array)
         const uint8_t(*wt_def)[2] = &WT_POS[WT_IDX[state->wtn]];
-        while (nwave > wt_def[state->wt_def_pos + 1][0])
+        while (nwave_i > wt_def[state->wt_def_pos + 1][0])
             state->wt_def_pos++;
-        while (nwave < wt_def[state->wt_def_pos][0])
+        while (nwave_i < wt_def[state->wt_def_pos][0])
             state->wt_def_pos--;
         state->wave1 = wt_def[state->wt_def_pos][1];
         state->wave2 = wt_def[state->wt_def_pos + 1][1];
-        if (nwave < LAST_MEM_WAVE) {
+        if (nwave_i < LAST_MEM_WAVE) {
             const uint8_t denom = wt_def[state->wt_def_pos + 1][0] - wt_def[state->wt_def_pos][0] - 1;
-            state->alpha_w = (nwave - wt_def[state->wt_def_pos][0]) * WSCALER[denom];
+            state->alpha_w = (nwave_f - wt_def[state->wt_def_pos][0]) * WSCALER[denom];
         } else {
             state->wave2 = STD_TRIANGLE;
-            state->alpha_w = nwave - LAST_MEM_WAVE;
+            state->alpha_w = nwave_f - LAST_MEM_WAVE;
         }
-    } else if (nwave < STANDARD_WAVES && state->wtn == WT_SYNC) {
+    } else if (nwave_i < STANDARD_WAVES && state->wtn == WT_SYNC) {
         // sync wave
         state->wave1 = WAVE_SYNC;
-        state->wave2 = (nwave < LAST_MEM_WAVE) ? WAVE_SYNC : STD_TRIANGLE;
-        state->alpha_w = nwave - (uint8_t)nwave;
-    } else if (nwave < STANDARD_WAVES && state->wtn == WT_STEP) {
+        state->wave2 = (nwave_i < LAST_MEM_WAVE) ? WAVE_SYNC : STD_TRIANGLE;
+        state->alpha_w = nwave_f - nwave_i;
+    } else if (nwave_i < STANDARD_WAVES && state->wtn == WT_STEP) {
         // step wave
         state->wave1 = WAVE_STEP;
-        state->wave2 = (nwave < LAST_MEM_WAVE) ? WAVE_STEP : STD_TRIANGLE;
-        state->alpha_w = nwave - (uint8_t)nwave;
+        state->wave2 = (nwave_i < LAST_MEM_WAVE) ? WAVE_STEP : STD_TRIANGLE;
+        state->alpha_w = nwave_f - nwave_i;
     } else {
         // standard waves
-        const uint8_t nw = (uint8_t)nwave;
-        state->wave1 = nw - WV_TRIANGLE + NWAVES;
+        // const uint8_t nw = (uint8_t)nwave;
+        state->wave1 = nwave_i - WV_TRIANGLE + NWAVES;
         const uint8_t next_wt = (state->wtn != WT_UPPER && state->use_upper) ? WT_UPPER : state->wtn;
-        state->wave2 = (nw < 63) ? state->wave1 + 1 : WT_POS[WT_IDX[next_wt]][1];
-        state->alpha_w = nwave - nw;
+        state->wave2 = (nwave_i < 63) ? state->wave1 + 1 : WT_POS[WT_IDX[next_wt]][1];
+        state->alpha_w = nwave_f - nwave_i;
     }
-    state->nwave = nwave;
+    // state->nwave = nwave;
 }
 
 /*  generate

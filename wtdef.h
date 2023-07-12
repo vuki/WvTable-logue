@@ -17,8 +17,8 @@
 #define WV_PULSE 61
 #define WV_SQUARE 62
 #define WV_SAW 63
-#define LAST_MEM_WAVE 59.f
-#define STANDARD_WAVES 60.f
+#define LAST_MEM_WAVE 59
+#define STANDARD_WAVES 60
 #define STD_TRIANGLE NWAVES
 #define STD_PULSE (NWAVES + 1)
 #define STD_SQUARE (NWAVES + 2)
