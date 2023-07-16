@@ -40,7 +40,7 @@ extern const unsigned char WAVES[NWAVES][64];
  * Index: wavetable number, 0 to 30.
  * Values: offset into WT_POS table (start of the wavetable).
  */
-extern const unsigned short WT_IDX[];
+// extern const unsigned short WT_IDX[];
 
 /*
  * Wavetable definition. Positions and indices of waves read directly from memory.
@@ -48,7 +48,17 @@ extern const unsigned short WT_IDX[];
  * - first item: wavetable slot (0 to 60),
  * - second item: wave number, from WAVES table.
  */
-extern const unsigned char WT_POS[][2];
+// extern const unsigned char WT_POS[][2];
+
+/*
+ * Wavetable definition. A 2D table.
+ * First index: wavetable number 1..27 or 30.
+ * Second index: position in the wavetable definition.
+ * Wavetable definition values are pairs:
+ * - first item: wavetable slot (0 to 60),
+ * - second item: wave number, from WAVES table.
+ */
+extern const unsigned char* WAVETABLES[];
 
 /*
  * Scalers for wave interpolation.

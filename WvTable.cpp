@@ -143,7 +143,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
         }
 
         // sample generation
-        *(py++) = f32_to_q31(generate(&g_gen_state));
+        *(py++) = generate(&g_gen_state) * 16777215.f; // float (-128..128) to Q31
     }
 }
 
