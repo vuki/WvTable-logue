@@ -30,8 +30,6 @@
 #define MASK_6 0x3f
 #define MASK_BIT31 0x80000000
 
-typedef enum { ENV_S, ENV_A, ENV_D } EnvStage;
-
 typedef struct {
     uint8_t ntable; // wavetable number that was set, 0..30
     uint8_t wtn; // currently used wavetable: base or upper
@@ -51,11 +49,6 @@ typedef struct {
     WtState osc; // oscillator state
     float srate;
     float phase_scaler;
-    EnvStage wave_env_stage;
-    float wave_env_arate;
-    float wave_env_drate;
-    float wave_env_amount;
-    float wave_env_value;
     float wave_mod;
 #if defined(OVS_2x)
     DecimatorState decimator;
@@ -85,11 +78,6 @@ void wtgen_init(WtGenState* __restrict state, float srate)
     state->osc.phase = 0;
     state->osc.step = 0x2000000;
     state->phase_scaler = 1.f / (OVS * state->srate);
-    state->wave_env_stage = ENV_S;
-    state->wave_env_arate = 0;
-    state->wave_env_drate = 0;
-    state->wave_env_amount = 0;
-    state->wave_env_value = 0;
     state->wave_mod = 0;
 #if defined(OVS_2x)
     decimator_reset(&state->decimator);
@@ -103,7 +91,6 @@ _INLINE void wtgen_reset(WtGenState* __restrict state)
 {
     state->osc.phase = 0;
     state->wave_mod = 0;
-    state->wave_env_value = 0;
 #if defined(OVS_2x)
     decimator_reset(&state->decimator);
 #endif
@@ -241,6 +228,7 @@ _INLINE void set_wave_number(WtState* __restrict state, uint32_t wavenum)
 
 /*  generate
     Calculate and return one sample value.
+    Returns: sample value, floating point, -127.5 to 127.5
 */
 _INLINE float generate(WtGenState* __restrict state)
 {
@@ -371,7 +359,7 @@ _INLINE float generate(WtGenState* __restrict state)
 #if OVS != 1
     y[0][0] = decimator_do(&state->decimator, y[0][0], y[1][0]);
 #endif
-    return y[0][0];
+    return y[0][0] + 0.5f; // compensate for DC because of -128..127 range
 }
 
 #endif
