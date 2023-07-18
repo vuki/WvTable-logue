@@ -5,7 +5,7 @@
  * Author: Grzegorz Szwoch (GregVuki)
  */
 
-// #define OVS_2x
+#define OVS_2x
 // #define OVS_4x
 
 #include "userosc.h"

@@ -2,10 +2,10 @@
 #ifndef _WTGEN_H
 #define _WTGEN_H
 
-#if defined(OVS_2x)
-#define OVS 2
-#elif defined(OVS_4x)
+#if defined(OVS_4x)
 #define OVS 4
+#elif defined(OVS_2x)
+#define OVS 2
 #else
 #define OVS 1
 #endif
@@ -50,8 +50,11 @@ typedef struct {
     float srate;
     float phase_scaler;
     float wave_mod;
-#if defined(OVS_2x)
+#if OVS != 1
     DecimatorState decimator;
+#endif
+#if OVS == 4
+    DecimatorState decimator2;
 #endif
 } WtGenState;
 
@@ -79,8 +82,11 @@ void wtgen_init(WtGenState* __restrict state, float srate)
     state->osc.step = 0x2000000;
     state->phase_scaler = 1.f / (OVS * state->srate);
     state->wave_mod = 0;
-#if defined(OVS_2x)
+#if OVS != 1
     decimator_reset(&state->decimator);
+#endif
+#if OVS == 4
+    decimator_reset(&state->decimator2);
 #endif
 }
 
@@ -91,8 +97,11 @@ _INLINE void wtgen_reset(WtGenState* __restrict state)
 {
     state->osc.phase = 0;
     state->wave_mod = 0;
-#if defined(OVS_2x)
+#if OVS != 1
     decimator_reset(&state->decimator);
+#endif
+#if OVS == 4
+    decimator_reset(&state->decimator2);
 #endif
 }
 
@@ -356,6 +365,10 @@ _INLINE float generate(WtGenState* __restrict state)
         // interpolation
         y[n][0] = (1.f - state->osc.alpha_w) * y[n][0] + state->osc.alpha_w * y[n][1];
     }
+#if OVS == 4
+    y[0][0] = decimator_do(&state->decimator2, y[0][0], y[1][0]);
+    y[1][0] = decimator_do(&state->decimator2, y[2][0], y[3][0]);
+#endif
 #if OVS != 1
     y[0][0] = decimator_do(&state->decimator, y[0][0], y[1][0]);
 #endif
