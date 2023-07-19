@@ -1,0 +1,11 @@
+# #############################################################################
+# minilogue xd Oscillator Makefile
+# #############################################################################
+
+MCU_MODEL := STM32F401xC
+USER_TARGET_PLATFORM := k_user_target_miniloguexd
+
+include ../project.mk
+PKGARCH := $(PROJECT).mnlgxdunit
+
+include ../common.mk

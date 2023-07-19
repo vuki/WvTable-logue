@@ -4,9 +4,9 @@
 
 PROJECT = WvTable
 
-UCSRC = 
+UCSRC = ../src/wtdef.c
 
-UCXXSRC = WvTable.cpp wtdef.cpp
+UCXXSRC = ../src/WvTable.cpp
 
 UHEADERS = wtgen.h wtdef.h adenv.h
 

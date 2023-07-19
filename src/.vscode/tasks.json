@@ -17,6 +17,9 @@
                 "kind": "build",
                 "isDefault": true
             },
-        }
+            "options": {
+                "cwd": "${workspaceFolder}/.."
+            }        
+		}
     ]
 }
