@@ -12,6 +12,7 @@
 #include "wtgen.h"
 #include "adenv.h"
 
+
 #define FORCE_WAVE_RELOAD 0xffffffff
 #define MASK_LOWER_25 0x1ffffff
 #define MASK_UPPER_7 0xfe000000
@@ -32,7 +33,7 @@ extern const uint32_t ENV_LUT[];
 
 __fast_inline void update_frequency(uint16_t pitch)
 {
-    const uint16_t note = pitch >> 8;
+    const uint8_t note = pitch >> 8;
     const uint16_t mod = pitch & 0xFF;
     float freq = osc_notehzf(note);
     if (mod > 0) {

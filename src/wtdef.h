@@ -26,50 +26,58 @@
 #define WAVE_SYNC (NWAVES + 4)
 #define WAVE_STEP (NWAVES + 5)
 
-/*
- * Definition of waves (from PPG WAVE 2.3 ROM).
- * Rows: waves. Index: wave mumber (a reduced set of 204 waves).
- * Columns: wave samples. 64 samples per wave. Only the first half of the period.
- * The second half is calculated by reflecting the first half in both directions.
- * Sample values are 8 bit unsigned int.
- */
-extern const unsigned char WAVES[NWAVES][64];
+#ifdef __cplusplus
+extern "C" {
+#endif
 
-/*
- * Indices into table of positions.
- * Index: wavetable number, 0 to 30.
- * Values: offset into WT_POS table (start of the wavetable).
- */
-// extern const unsigned short WT_IDX[];
+	/*
+	 * Definition of waves (from PPG WAVE 2.3 ROM).
+	 * Rows: waves. Index: wave mumber (a reduced set of 204 waves).
+	 * Columns: wave samples. 64 samples per wave. Only the first half of the period.
+	 * The second half is calculated by reflecting the first half in both directions.
+	 * Sample values are 8 bit unsigned int.
+	 */
+	extern const unsigned char WAVES[NWAVES][64];
 
-/*
- * Wavetable definition. Positions and indices of waves read directly from memory.
- * Values are pairs:
- * - first item: wavetable slot (0 to 60),
- * - second item: wave number, from WAVES table.
- */
-// extern const unsigned char WT_POS[][2];
+	/*
+	 * Indices into table of positions.
+	 * Index: wavetable number, 0 to 30.
+	 * Values: offset into WT_POS table (start of the wavetable).
+	 */
+	 // extern const unsigned short WT_IDX[];
 
-/*
- * Wavetable definition. A 2D table.
- * First index: wavetable number 1..27 or 30.
- * Second index: position in the wavetable definition.
- * Wavetable definition values are pairs:
- * - first item: wavetable slot (0 to 60),
- * - second item: wave number, from WAVES table.
- */
-extern const unsigned char* WAVETABLES[];
+	 /*
+	  * Wavetable definition. Positions and indices of waves read directly from memory.
+	  * Values are pairs:
+	  * - first item: wavetable slot (0 to 60),
+	  * - second item: wave number, from WAVES table.
+	  */
+	  // extern const unsigned char WT_POS[][2];
 
-/*
- * Scalers for wave interpolation.
- * WSCALER[i] = 1.f / (i+1)
- */
-extern const float WSCALER[32];
+	  /*
+	   * Wavetable definition. A 2D table.
+	   * First index: wavetable number 1..27 or 30.
+	   * Second index: position in the wavetable definition.
+	   * Wavetable definition values are pairs:
+	   * - first item: wavetable slot (0 to 60),
+	   * - second item: wave number, from WAVES table.
+	   */
+	extern const unsigned char* WAVETABLES[];
 
-/*
- * For wavetable 28 (sync): number of position changes that cause a sync.
- * Index: wave number.
- */
-extern const unsigned char WT28_SPAN[];
+	/*
+	 * Scalers for wave interpolation.
+	 * WSCALER[i] = 1.f / (i+1)
+	 */
+	extern const float WSCALER[32];
+
+	/*
+	 * For wavetable 28 (sync): number of position changes that cause a sync.
+	 * Index: wave number.
+	 */
+	extern const unsigned char WT28_SPAN[];
+
+#ifdef __cplusplus
+}
+#endif
 
 #endif

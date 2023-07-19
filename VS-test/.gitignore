@@ -1,0 +1,7 @@
+x64
+x86
+Debug
+Release
+.vs
+*.vcxproj.user
+res.bin
