@@ -170,7 +170,7 @@ $(COBJS) : $(OBJDIR)/%.o : %.c $(HEADERDEPS) Makefile
 	@echo Compiling $(<F)
 	@$(CC) -c $(CFLAGS) -I. $(INCDIR) $< -o $@
 
-$(CXXOBJS) : $(OBJDIR)/%.o : %.cpp Makefile
+$(CXXOBJS) : $(OBJDIR)/%.o : %.cpp $(HEADERDEPS) Makefile
 	@echo Compiling $(<F)
 	@$(CXXC) -c $(CXXFLAGS) -I. $(INCDIR) $< -o $@
 
