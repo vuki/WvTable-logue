@@ -3,13 +3,10 @@ Single oscillator version
 ==========================
 
 Shape (0..1023)
-Wave number (0..127) as integer.
-wave = floor(par / 8)
-  wave = (par >> 3)  - only integer wave numbers, 0..127 
+Wave number (0..127), in 1/8 (0.125) steps.
 
 Shift+Shape (0..1023)
-Fractional wave number offset, 0..1
-offset = par / 1024
+Wave number offset, 0 to 0.125, in 1/8192 steps.
 
 Par1 (0..90%)
 Wavetable number
@@ -42,3 +39,12 @@ value 1: -99% envelope, peak value near -64
 peak = (val - 100) * 64 / 100
 
 Par5, Par6: not used
+
+---
+
+Wave number: 32 bit, UQ7.25.
+7 upper bits: integer part, 0..127
+25 lower bits: fractional part
+
+Shape parameter: upper 10 bits (31-22)
+Shift+shape: next 10 bits (21-12)

@@ -13,8 +13,8 @@
 #include "adenv.h"
 
 #define FORCE_WAVE_RELOAD 0xffffffff
-#define MASK_LOWER_25 0x1ffffff
-#define MASK_UPPER_7 0xfe000000
+#define MASK_WAVE_UPPER 0xffc00000
+#define MASK_WAVE_LOWER 0x3ff000
 #define WTNUM_FLAG 0x8000
 #define WTNUM_MASK 0x7f
 
@@ -168,15 +168,13 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         break;
 
     case k_user_osc_param_shape:
-        // Shape: integer part of the wave number
-        // round value to UQ7 and convert to UQ7.25
-        g_osc_params.base_nwave = (g_osc_params.base_nwave & MASK_LOWER_25) | ((value >> 3) << 25);
+        // Shape: wave number with 1/8 resolution
+        g_osc_params.base_nwave = (g_osc_params.base_nwave & MASK_WAVE_LOWER) | (value << 22);
         break;
 
     case k_user_osc_param_shiftshape:
-        // Shift+Shape: fractional part of the wave number
-        // UQ10 value to UQ25 value
-        g_osc_params.base_nwave = (g_osc_params.base_nwave & MASK_UPPER_7) | (value << 15);
+        // Shift+Shape: wave number offset, 0 to 0.125, with 1/8192 resolution
+        g_osc_params.base_nwave = (g_osc_params.base_nwave & MASK_WAVE_UPPER) | (value << 12);
         break;
 
     default:

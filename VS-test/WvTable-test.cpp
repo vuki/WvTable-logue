@@ -45,24 +45,11 @@ void set_wavetable(uint16_t wt)
 	OSC_PARAM(k_user_osc_param_id1, wt);
 }
 
-/*
-void set_wave(uint16_t wave)
-{
-	OSC_PARAM(k_user_osc_param_shape, wave << 3);
-}
-
-void set_wave_fine(uint16_t wave)
-{
-	OSC_PARAM(k_user_osc_param_shiftshape, wave);
-}
-*/
-
 void set_wave(float wave)
 {
-	uint16_t wave_i = (uint16_t)wave;
-	const float wave_f = wave - wave_i;
-	OSC_PARAM(k_user_osc_param_shape, (wave_i & 0x7f) << 3);
-	OSC_PARAM(k_user_osc_param_shiftshape, (uint16_t)(wave_f * 1024.f));
+	uint32_t nwave = (uint32_t)(wave * 33554432.f);
+	OSC_PARAM(k_user_osc_param_shape, static_cast<uint16_t>((nwave >> 22) & 0x3ff));
+	OSC_PARAM(k_user_osc_param_shiftshape, static_cast<uint16_t>((nwave >> 12) & 0x3ff));
 }
 
 void set_env_attack(uint16_t env_a)
@@ -85,7 +72,7 @@ void set_env_amount(int16_t env_amount)
 int main(int argc, char* argv[])
 {
 	int16_t wavetable = 0;
-	float wave = 64;
+	float wave = 48;
 	uint32_t nsamples = 512;
 	if (argc > 1) {
 		wavetable = atoi(argv[1]);
