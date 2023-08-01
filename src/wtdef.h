@@ -9,22 +9,11 @@
  */
 
 #define NWAVES 204
-#define WT_BASE 27
 #define WT_SYNC 28
 #define WT_STEP 29
 #define WT_UPPER 30
-#define WV_TRIANGLE 60
-#define WV_PULSE 61
-#define WV_SQUARE 62
-#define WV_SAW 63
-#define LAST_MEM_WAVE 59
-#define STANDARD_WAVES 60
-#define STD_TRIANGLE NWAVES
-#define STD_PULSE (NWAVES + 1)
-#define STD_SQUARE (NWAVES + 2)
-#define STD_SAW (NWAVES + 3)
-#define WAVE_SYNC (NWAVES + 4)
-#define WAVE_STEP (NWAVES + 5)
+#define WAVE_SYNC (NWAVES + 1)
+#define WAVE_STEP (NWAVES + 2)
 
 #ifdef __cplusplus
 extern "C" {

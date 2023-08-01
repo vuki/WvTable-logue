@@ -25,17 +25,15 @@
 #define MAX_TABLE 61
 #define Q25TOF 2.9802322387695312e-08f
 #define Q24TOF 5.960464477539063e-08f
+#define MASK_BIT31 0x80000000
 #define MASK_31 0x7fffffff
 #define MASK_25 0x1ffffff
+#define MASK_7 0x7f
 #define MASK_6 0x3f
-#define MASK_BIT31 0x80000000
 
 typedef struct {
-    uint8_t ntable; // wavetable number that was set, 0..30
-    uint8_t wtn; // currently used wavetable: base or upper
-    uint8_t use_upper; // if not 0, use upper wavetable at waves 64..127
-    uint8_t wave_pos; // wave position in wavetable, integer 0..63
-    uint8_t wave[2]; // numbers of the stored waves (indices into WAVES)
+    uint8_t wavetable[128][4]; // wavetable definition
+    uint8_t wave[4]; // numbers of the stored waves (indices into WAVES)
     uint8_t* pwave[2]; // pointer to samples of the waves
     uint16_t* wt_pos; // pointer to position in the wavetable definition
     float alpha_w; // linear interpolation coefficient
@@ -57,17 +55,16 @@ typedef struct {
 #endif
 } WtGenState;
 
+_INLINE void load_wavetable(WtState* state, uint8_t wt_number, uint8_t use_upper);
+
 /*  wtgen_init
     Initialize the generator
     srate: sampling rate in Hz
 */
-void wtgen_init(WtGenState* __restrict state, float srate)
+_INLINE void wtgen_init(WtGenState* __restrict state, float srate)
 {
     state->srate = srate;
-    state->osc.ntable = 0;
-    state->osc.wtn = 0;
-    state->osc.use_upper = 1;
-    state->osc.wave_pos = 0;
+    // load_wavetable(&state->osc, 0, 1); // run it from the caller
     state->osc.wave[0] = WAVETABLES[0][0];
     state->osc.wave[1] = WAVETABLES[0][1];
     state->osc.pwave[0] = (uint8_t*)&WAVES[state->osc.wave[0]][0];
@@ -125,14 +122,7 @@ _INLINE void set_wavetable(WtGenState* __restrict state, uint8_t ntable)
         use_upper = 0;
         ntable -= WT_UPPER;
     }
-    if (ntable != state->osc.ntable) {
-        state->osc.ntable = ntable;
-        state->osc.use_upper = use_upper;
-        if (state->osc.wtn != WT_UPPER) {
-            state->osc.wtn = ntable;
-            state->osc.wt_pos = (uint16_t*)&WAVETABLES[ntable][0];
-        }
-    }
+    load_wavetable(&state->osc, ntable, use_upper);
 }
 
 /*  set_wave_number
@@ -142,68 +132,30 @@ _INLINE void set_wavetable(WtGenState* __restrict state, uint8_t ntable)
 _INLINE void set_wave_number(WtState* __restrict state, uint32_t wavenum)
 {
 
-    const uint8_t old_wtn = state->wtn;
-    state->wtn = (state->use_upper && (wavenum & MASK_BIT31)) ? WT_UPPER : state->ntable;
-    const uint8_t nwave_i = (wavenum >> 25) & MASK_6; // integer part of the wave number, 0..63 (UQ6)
-    const float nwave_f = Q25TOF * (wavenum & MASK_31); // full wave number (0..64) as float
-    state->wave_pos = nwave_i;
-    if (state->wtn != old_wtn) {
-        state->wt_pos = (uint16_t*)&WAVETABLES[state->wtn][0];
-    }
-    if (nwave_i < STANDARD_WAVES && state->wtn != WT_SYNC && state->wtn != WT_STEP) {
-        // select from stored waves
-        uint16_t wt_first = *state->wt_pos;
-        uint16_t wt_second;
-        const uint8_t* wtp1 = (const uint8_t*)&wt_first;
-        const uint8_t* wtp2 = (const uint8_t*)&wt_second;
-        if (nwave_i < wtp1[0]) {
-            while (1) {
-                wt_second = wt_first;
-                wt_first = *(--state->wt_pos);
-                if (nwave_i >= wtp1[0])
-                    break;
-            }
-        } else {
-            wt_second = *(state->wt_pos + 1);
-            if (nwave_i > wtp2[0]) {
-                while (1) {
-                    ++state->wt_pos;
-                    wt_first = wt_second;
-                    wt_second = *(state->wt_pos + 1);
-                    if (nwave_i < wtp2[0])
-                        break;
-                }
-            }
-        }
-        state->wave[0] = wtp1[1];
-        state->pwave[0] = (uint8_t*)&WAVES[wtp1[1]][0];
-        if (nwave_i < LAST_MEM_WAVE) {
-            state->wave[1] = wtp2[1];
-            state->pwave[1] = (uint8_t*)&WAVES[wtp2[1]][0];
-            const uint8_t denom = wtp2[0] - wtp1[0] - 1;
-            state->alpha_w = (nwave_f - wtp1[0]) * WSCALER[denom];
-        } else {
-            state->wave[1] = STD_TRIANGLE;
-            state->alpha_w = nwave_f - LAST_MEM_WAVE;
-        }
+    const uint8_t nwave_i = (wavenum >> 25); // integer part of the wave number, 0..127 (UQ7)
+    const float nwave_f = Q25TOF * wavenum; // full wave number (0..127) as float
+    uint32_t wavedef = ((uint32_t*)(state->wavetable))[nwave_i];
+    uint8_t* pwavedef = (uint8_t*)&wavedef;
+    state->alpha_w = (nwave_f - pwavedef[2]) * WSCALER[pwavedef[3] - 1];
 
-    } else if (nwave_i < STANDARD_WAVES && state->wtn == WT_SYNC) {
-        // sync wave
-        state->wave[0] = WAVE_SYNC;
-        state->wave[1] = (nwave_i < LAST_MEM_WAVE) ? WAVE_SYNC : STD_TRIANGLE;
-        state->alpha_w = nwave_f - nwave_i;
-    } else if (nwave_i < STANDARD_WAVES && state->wtn == WT_STEP) {
-        // step wave
-        state->wave[0] = WAVE_STEP;
-        state->wave[1] = (nwave_i < LAST_MEM_WAVE) ? WAVE_STEP : STD_TRIANGLE;
-        state->alpha_w = nwave_f - nwave_i;
-    } else {
-        // standard waves
-        state->wave[0] = nwave_i - WV_TRIANGLE + NWAVES;
-        const uint8_t next_wt = (state->wtn != WT_UPPER && state->use_upper) ? WT_UPPER : state->wtn;
-        state->wave[1] = (nwave_i < 63) ? state->wave[0] + 1 : WAVETABLES[next_wt][1];
-        state->alpha_w = nwave_f - nwave_i;
+    uint8_t n;
+    for (n = 0; n < 2; n++) {
+        if (pwavedef[n] < NWAVES) {
+            state->pwave[n] = (uint8_t*)&WAVES[pwavedef[n]][0];
+        } else if (pwavedef[n] == WAVE_SYNC || pwavedef[n] == WAVE_STEP) {
+            const uint8_t pos = (nwave_i + n) & MASK_7;
+            if (pos < 60)
+                pwavedef[n + 2] = pos;
+            else if (pos < 64)
+                pwavedef[n + 2] = 60;
+            else if (pos < 124)
+                pwavedef[n + 2] = 124 - pos;
+            else
+                pwavedef[n + 2] = 0;
+        }
     }
+
+    *((uint32_t*)(&state->wave)) = wavedef;
 }
 
 /*  generate
@@ -214,13 +166,15 @@ _INLINE float generate(WtGenState* __restrict state)
 {
     float y[OVS][4];
     uint8_t k, n;
+    const uint32_t nwave_buf = *((uint32_t*)(&state->osc.wave));
+    const uint8_t* const nwave = (const uint8_t*)&nwave_buf;
+
     // Loop over oversampled values
     for (n = 0; n < OVS; n++) {
         const uint32_t phase = state->osc.phase;
         // Loop over two waves
         for (k = 0; k < 2; k++) {
-            const uint8_t nwavek = state->osc.wave[k];
-            if (nwavek < NWAVES) {
+            if (nwave[k] < NWAVES) {
                 // memory wave - interpolate between samples
                 const float alpha = (float)(phase & 0x1ffffff) * Q25TOF;
                 const uint8_t pos = (uint8_t)(phase >> 25); // UQ7
@@ -250,58 +204,19 @@ _INLINE float generate(WtGenState* __restrict state)
                     }
                 }
                 y[n][k] -= 128.f;
-            } else if (nwavek == STD_TRIANGLE) {
-                // standard wave: triangle
-                const float pos = (float)phase * Q25TOF;
-                y[n][k] = (pos < 64.f) ? (-96.f + 3.f * pos) : (96.f - 3.f * (pos - 64.f));
-            } else if (nwavek == STD_PULSE) {
-                // standard wave: pulse
-                const float pos = (float)phase * Q25TOF;
-                y[n][k] = (pos < 124.f) ? -64.f : 127.f;
-            } else if (nwavek == STD_SQUARE) {
-                // standard wave: square (with PolyBLEP)
-                const float pos = (float)phase * Q25TOF;
-                const float phase_step = (float)(state->osc.step) * Q25TOF;
-                const float rstep = (float)(state->osc.recip_step);
-                y[n][k] = (pos < 64.f) ? -96.f : 96.f;
-                if (pos < phase_step) {
-                    const float t = pos * rstep;
-                    y[n][k] -= (t + t - t * t - 1.f) * 96.f;
-                } else if (((64.f - phase_step) < pos) && (pos < 64.f)) {
-                    const float t = (pos - 64.f) * rstep;
-                    y[n][k] += (t * t + t + t + 1.f) * 96.f;
-                } else if ((64.f <= pos) && (pos < (64.f + phase_step))) {
-                    const float t = (pos - 64.f) * rstep;
-                    y[n][k] += (t + t - t * t - 1.f) * 96.f;
-                } else if (pos > 128 - phase_step) {
-                    const float t = (pos - 128.f) * rstep;
-                    y[n][k] -= (t * t + t + t + 1.f) * 96.f;
-                }
-            } else if (nwavek == STD_SAW) {
-                // standard wave: sawtooth (with PolyBLEP)
-                const float pos = (float)phase * Q25TOF;
-                const float phase_step = (float)(state->osc.step) * Q25TOF;
-                const float rstep = (float)(state->osc.recip_step);
-                y[n][k] = -64.f + pos;
-                if (pos < phase_step) {
-                    const float t = pos * rstep;
-                    y[n][k] -= (t + t - t * t - 1.f) * 64.f;
-                } else if (pos > 128.f - phase_step) {
-                    const float t = (pos - 128.f) * rstep;
-                    y[n][k] -= (t * t + t + t + 1.f) * 64.f;
-                }
-            } else if (nwavek == WAVE_SYNC) {
-                // wavetable 28: sync wave
-                const uint8_t nwave = (int8_t)state->osc.wave_pos;
-                const uint32_t span = (uint32_t)(WT28_SPAN[nwave]) << 24; // UQ8.24
+
+            } else if (nwave[k] == WAVE_SYNC) {
+                // wavetable 28: sync wave (no aliasing protection)
+                const uint8_t nwave_i = nwave[k + 2];
+                const uint32_t span = (uint32_t)(WT28_SPAN[nwave_i]) << 24; // UQ8.24
                 uint32_t pos = (phase >> 1) % span; // UQ8.24
-                y[n][k] = (1.f + nwave * 0.0859375f) * (float)pos * Q24TOF - 64.f;
-            } else if (nwavek == WAVE_STEP) {
+                y[n][k] = (1.f + nwave_i * 0.0859375f) * (float)pos * Q24TOF - 64.f;
+            } else if (nwave[k] == WAVE_STEP) {
                 // wavetable 29: step wave (with PolyBLEP)
                 const float pos = (float)phase * Q25TOF;
                 const float phase_step = (float)(state->osc.step) * Q25TOF;
                 const float rstep = (float)(state->osc.recip_step);
-                const float edge = 69.f + state->osc.wave_pos;
+                const float edge = 69.f + nwave[k + 2];
                 y[n][k] = (pos < edge) ? 32.f : -32.f;
                 if (pos < phase_step) {
                     const float t = pos * rstep;
@@ -332,6 +247,115 @@ _INLINE float generate(WtGenState* __restrict state)
     y[0][0] = decimator_do(&state->decimator, y[0][0], y[1][0]);
 #endif
     return y[0][0] + 0.5f; // compensate for DC because of -128..127 range
+}
+
+/*  load_wavetable
+    Prepares the wavetable definition
+    wt_number: wavetable number, 0-30.
+    use_upper: 1 - use upper wavetable, 0 - do not use.
+*/
+_INLINE void load_wavetable(WtState* state, uint8_t wt_number, uint8_t use_upper)
+{
+    if (wt_number > 30)
+        return;
+
+    uint32_t wt_entry;
+    uint8_t* pwt_entry = (uint8_t*)&wt_entry;
+    uint32_t edge; // [w0, w60, w64, w124]
+    uint8_t* pedge = (uint8_t*)&edge;
+    uint32_t* ptable = (uint32_t*)&state->wavetable[0][0];
+    uint16_t wt1, wt2;
+    uint8_t* pwt1 = (uint8_t*)&wt1;
+    uint8_t* pwt2 = (uint8_t*)&wt2;
+    uint8_t p;
+
+    // 0-63: base wt
+    if (wt_number != WT_SYNC && wt_number != WT_STEP) {
+        uint16_t* pwtdef = (uint16_t*)&WAVETABLES[wt_number][0];
+        wt1 = *pwtdef++;
+        wt2 = *pwtdef++;
+        uint8_t span = pwt2[0] - pwt1[0];
+        pedge[0] = pwt1[1];
+        for (p = 0; p < 60; p++, ptable++) {
+            if (p >= pwt2[0]) {
+                wt1 = wt2;
+                wt2 = *pwtdef++;
+                span = pwt2[0] - pwt1[0];
+            }
+            pwt_entry[0] = pwt1[1];
+            pwt_entry[1] = pwt2[1];
+            pwt_entry[2] = pwt1[0];
+            pwt_entry[3] = span;
+            *ptable = wt_entry;
+        }
+        pedge[1] = pwt2[1];
+    } else {
+        const uint8_t wn = (wt_number == WT_SYNC) ? WAVE_SYNC : WAVE_STEP;
+        pwt_entry[0] = wn;
+        pwt_entry[1] = wn;
+        pwt_entry[3] = 1;
+        for (p = 0; p < 60; p++, ptable++) {
+            pwt_entry[2] = p;
+            *ptable = wt_entry;
+        }
+        pedge[0] = wn;
+        pedge[1] = wn;
+    }
+
+    // 64-123: upper/base wt reversed
+    if (use_upper || (wt_number != WT_SYNC && wt_number != WT_STEP)) {
+        ptable = (uint32_t*)&state->wavetable[124][0];
+        uint16_t* pwtdef = (uint16_t*)&WAVETABLES[use_upper ? 30 : wt_number][0];
+        wt1 = *pwtdef++;
+        wt2 = *pwtdef++;
+        uint8_t span = pwt2[0] - pwt1[0];
+        pedge[3] = pwt1[1];
+        uint8_t n = 0;
+        for (p = 0; p <= 60; p++, ptable--) {
+            if (p > pwt2[0]) {
+                wt1 = wt2;
+                wt2 = *pwtdef++;
+                span = pwt2[0] - pwt1[0];
+            }
+            pwt_entry[0] = pwt2[1];
+            pwt_entry[1] = pwt1[1];
+            pwt_entry[2] = 124 - pwt2[0];
+            pwt_entry[3] = span;
+            *ptable = wt_entry;
+        }
+        pedge[2] = pwt2[1];
+    } else {
+        const uint8_t wn = (wt_number == WT_SYNC) ? WAVE_SYNC : WAVE_STEP;
+        pwt_entry[0] = wn;
+        pwt_entry[1] = wn;
+        pwt_entry[3] = 1;
+        ptable = (uint32_t*)&state->wavetable[64][0];
+        for (p = 64; p < 124; p++, ptable++) {
+            pwt_entry[2] = p;
+            *ptable = wt_entry;
+        }
+        pedge[2] = wn;
+        pedge[3] = wn;
+    }
+
+    // transition 60-64
+    pwt_entry[0] = pedge[1];
+    pwt_entry[1] = pedge[2];
+    pwt_entry[2] = 60;
+    pwt_entry[3] = 4;
+    ptable = (uint32_t*)&state->wavetable[60][0];
+    for (p = 0; p < 4; p++, ptable++) {
+        *ptable = wt_entry;
+    }
+
+    // transition 124-127
+    pwt_entry[0] = pedge[3];
+    pwt_entry[1] = pedge[0];
+    pwt_entry[2] = 124;
+    ptable = (uint32_t*)&state->wavetable[124][0];
+    for (p = 0; p < 4; p++, ptable++) {
+        *ptable = wt_entry;
+    }
 }
 
 #endif

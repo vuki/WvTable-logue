@@ -166,7 +166,7 @@ $(ASMXOBJS) : $(OBJDIR)/%.o : %.S Makefile
 	@echo Assembling $(<F)
 	@$(CC) -c $(ASXFLAGS) -I. $(INCDIR) $< -o $@
 
-$(COBJS) : $(OBJDIR)/%.o : %.c $(HEADERDEPS) Makefile
+$(COBJS) : $(OBJDIR)/%.o : %.c Makefile
 	@echo Compiling $(<F)
 	@$(CC) -c $(CFLAGS) -I. $(INCDIR) $< -o $@
 

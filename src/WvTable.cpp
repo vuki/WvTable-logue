@@ -12,10 +12,11 @@
 #include "wtgen.h"
 #include "adenv.h"
 
-
 #define FORCE_WAVE_RELOAD 0xffffffff
 #define MASK_LOWER_25 0x1ffffff
 #define MASK_UPPER_7 0xfe000000
+#define WTNUM_FLAG 0x8000
+#define WTNUM_MASK 0x7f
 
 struct {
     float frequency;
@@ -23,6 +24,7 @@ struct {
     uint32_t set_wavenum;
     int32_t nwave_mod;
     int32_t env_amount;
+    uint16_t wt_num;
     uint16_t pitch;
 } g_osc_params;
 
@@ -56,11 +58,26 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     g_osc_params.set_wavenum = FORCE_WAVE_RELOAD;
     g_osc_params.nwave_mod = 0;
     g_osc_params.env_amount = 0;
+    g_osc_params.wt_num = WTNUM_FLAG;
     g_osc_params.pitch = 0;
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const uint32_t nframes)
 {
+    // check for wavetable change
+    if (g_osc_params.wt_num & WTNUM_FLAG) {
+        g_osc_params.wt_num &= WTNUM_MASK;
+        set_wavetable(&g_gen_state, (uint8_t)g_osc_params.wt_num);
+        g_osc_params.set_wavenum = FORCE_WAVE_RELOAD;
+#ifndef _MSC_VER
+        // skip samples calculation for this frame
+        uint32_t i;
+        for (i = 0; i < nframes; i++)
+            framebuf[i] = 0;
+        return;
+#endif
+    }
+
     // check for pitch change
     if (params->pitch != g_osc_params.pitch) {
         update_frequency(params->pitch);
@@ -129,8 +146,7 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     case k_user_osc_param_id1:
         // Param 1: wavetable number
         if (value < 61) {
-            set_wavetable(&g_gen_state, (uint8_t)value);
-            g_osc_params.set_wavenum = FORCE_WAVE_RELOAD;
+            g_osc_params.wt_num = value | WTNUM_FLAG;
         }
         break;
 

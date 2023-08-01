@@ -85,13 +85,13 @@ void set_env_amount(int16_t env_amount)
 int main(int argc, char* argv[])
 {
 	int16_t wavetable = 0;
-	float wave = 0;
+	float wave = 64;
 	uint32_t nsamples = 512;
 	if (argc > 1) {
 		wavetable = atoi(argv[1]);
 	}
 	if (argc > 2) {
-		wave = atof(argv[2]);
+		wave = static_cast<float>(atof(argv[2]));
 	}
 	if (argc > 3) {
 		nsamples = atoi(argv[3]);
