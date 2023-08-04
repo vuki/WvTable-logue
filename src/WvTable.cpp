@@ -210,8 +210,9 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         break;
 
     case k_user_osc_param_shiftshape:
-        // Shift+Shape: wave number offset, 0 to 0.125, with 1/8192 resolution
-        g_osc_params.base_nwave = (g_osc_params.base_nwave & MASK_WAVE_UPPER) | (value << 12);
+        // Shift+Shape: phase distortion
+        // breakpoint = 64 - (value/16)
+        set_phase_distortion(&g_gen_state, (uint32_t(1024) - (uint32_t)value) << 21);
         break;
 
     default:

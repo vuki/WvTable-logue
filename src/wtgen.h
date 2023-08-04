@@ -36,10 +36,13 @@ typedef struct {
     uint8_t wave[4]; // numbers of the stored waves (indices into WAVES)
     uint8_t* pwave[2]; // pointer to samples of the waves
     float alpha_w; // linear interpolation coefficient
-    uint32_t phase; // signal phase, Q7.25
-    uint32_t step; // step to increase the phase, Q7.25
+    uint32_t phase; // signal phase, UQ7.25
+    uint32_t step; // step to increase the phase, UQ7.25
     float recip_step; // 1/step as float
     float phase_scaler; // 1/(ovs*srate)
+    uint32_t pd_bp; // phase distortion breakpoint, UQ7.25
+    float pd_r1; // phase distortion rate below the breakpoint
+    float pd_r2; // phase distortion rate above the breakpoint
 #if OVS != 1
     DecimatorState decimator;
 #endif
@@ -65,6 +68,8 @@ _INLINE void wtgen_init(WtGenState* __restrict state, float srate)
     state->phase = 0;
     state->step = 0x2000000;
     state->phase_scaler = 1.f / (OVS * srate);
+    state->pd_bp = 0;
+    state->pd_r1 = state->pd_r2 = 1.f;
 #if OVS != 1
     decimator_reset(&state->decimator);
 #endif
@@ -96,6 +101,22 @@ _INLINE void set_frequency(WtGenState* __restrict state, float freq)
     const float step_f = freq * state->phase_scaler;
     state->step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
     state->recip_step = 0.0078125f / step_f; // (1/128)/step_f
+}
+
+/*  set_phase_distortion
+    Sets phase distortion for wave readout.
+    bp: phase breakpoint as UQ7.25; 0 disables the pd.
+*/
+_INLINE void set_phase_distortion(WtGenState* __restrict state, uint32_t bp)
+{
+    if ((bp > 0) && (bp < 0x80000000)) {
+        state->pd_bp = bp;
+        const float fbp = bp * Q25TOF;
+        state->pd_r1 = 64.f / fbp;
+        state->pd_r2 = 64.f / (128.f - fbp);
+    } else {
+        state->pd_bp = 0;
+    }
 }
 
 /*  set_wavetable
@@ -165,8 +186,22 @@ _INLINE float generate(WtGenState* __restrict state)
         for (k = 0; k < 2; k++) {
             if (nwave[k] < NWAVES) {
                 // memory wave - interpolate between samples
-                const float alpha = (float)(phase & 0x1ffffff) * Q25TOF;
-                const uint8_t pos = (uint8_t)(phase >> 25); // UQ7
+                float alpha;
+                uint8_t pos;
+                if (!state->pd_bp) {
+                    alpha = (float)(phase & 0x1ffffff) * Q25TOF;
+                    pos = (uint8_t)(phase >> 25); // UQ7
+                } else {
+                    // apply phase distortion
+                    float fpos;
+                    if (phase <= state->pd_bp) {
+                        fpos = state->pd_r1 * phase * Q25TOF;
+                    } else {
+                        fpos = state->pd_r2 * (phase - state->pd_bp) * Q25TOF + 64.f;
+                    }
+                    pos = (uint8_t)fpos;
+                    alpha = fpos - pos;
+                }
                 const uint8_t* const pwave = state->pwave[k];
                 if (!(pos & 0x40)) {
                     // pos 0..63
