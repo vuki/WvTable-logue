@@ -8,12 +8,14 @@
         "prg_id" : 0,
         "version" : "1.0-1",
         "name" : "WvTable",
-        "num_param" : 4,
+        "num_param" : 6,
         "params" : [
             ["Wavetable",    0,  60, "%"],
             ["Env Attack",   0, 100, "%"],
             ["Env Decay",    0, 100, "%"],
-            ["Env Amount", -99, 100, "%"]
+            ["Env Amount", -99, 100, "%"],
+			["LFO2 Rate",    0, 100, "%"],
+			["LFO2 Depth",   0, 100, "%"]
           ]
     }
 }

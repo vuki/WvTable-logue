@@ -24,6 +24,9 @@ struct {
     uint32_t set_wavenum;
     int32_t nwave_mod;
     int32_t env_amount;
+    int32_t lfo2_phase;
+    int32_t lfo2_step;
+    int32_t lfo2_amount;
     uint16_t wt_num;
     uint16_t pitch;
 } g_osc_params;
@@ -62,6 +65,45 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     g_osc_params.pitch = 0;
 }
 
+__fast_inline int32_t generate_sample(int32_t mod_rate)
+{
+    // wave modulation
+    int32_t nwave_mod = 0; // Q7.24
+    if (g_env_state.stage == ENV_S) {
+        // use main LFO
+        g_osc_params.nwave_mod += mod_rate;
+        nwave_mod = g_osc_params.nwave_mod;
+        if (g_osc_params.lfo2_amount) {
+            // use LFO2 (triangle)
+            g_osc_params.lfo2_phase += g_osc_params.lfo2_step;
+            const int32_t m = g_osc_params.lfo2_phase >> 31;
+            int32_t v = (g_osc_params.lfo2_phase ^ m) - m;
+            v = (v - int32_t(1 << 30)); // Q30
+            nwave_mod += (v >> 6) * g_osc_params.lfo2_amount;
+        }
+    } else {
+        // use envelope
+        const uint32_t env_val = adenv_get(&g_env_state); // UQ31
+        nwave_mod = (int32_t)(env_val >> 7) * g_osc_params.env_amount; // Q7.24
+    }
+
+    // update wave number
+    uint32_t nwave_new = g_osc_params.base_nwave; // UQ7.25
+    if (nwave_mod != 0) {
+        // convert base wave number UQ7.25 to Q7.24 (>>1),
+        // add modulation (possible overflow),
+        // rescale back (<<1).
+        nwave_new = (uint32_t)((((int32_t)nwave_new >> 1) + nwave_mod) << 1);
+    }
+    if (nwave_new != g_osc_params.set_wavenum) {
+        set_wave_number(&g_gen_state, nwave_new);
+        g_osc_params.set_wavenum = nwave_new;
+    }
+
+    // sample generation
+    return (int32_t)(generate(&g_gen_state) * 16777215.f + 0.5f); // float (-128..128) to Q31
+}
+
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const uint32_t nframes)
 {
     // check for wavetable change
@@ -95,31 +137,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
     q31_t* __restrict py = (q31_t*)framebuf;
     const q31_t* py_e = py + nframes;
     for (; py != py_e;) {
-        // wave modulation
-        if (g_env_state.stage == ENV_S) {
-            // use LFO
-            g_osc_params.nwave_mod += mod_rate;
-        } else {
-            // use envelope
-            const uint32_t env_val = adenv_get(&g_env_state); // UQ31
-            g_osc_params.nwave_mod = (int32_t)(env_val >> 7) * g_osc_params.env_amount; // Q7.24
-        }
-
-        // update wave number
-        uint32_t nwave_new = g_osc_params.base_nwave; // UQ7.25
-        if (g_osc_params.nwave_mod != 0) {
-            // convert base wave number UQ7.25 to Q7.24 (>>1),
-            // add modulation (possible overflow),
-            // rescale back (<<1).
-            nwave_new = (uint32_t)((((int32_t)nwave_new >> 1) + g_osc_params.nwave_mod) << 1);
-        }
-        if (nwave_new != g_osc_params.set_wavenum) {
-            set_wave_number(&g_gen_state, nwave_new);
-            g_osc_params.set_wavenum = nwave_new;
-        }
-
-        // sample generation
-        *(py++) = (int32_t)(generate(&g_gen_state) * 16777215.f + 0.5f); // float (-128..128) to Q31
+        *(py++) = generate_sample(mod_rate);
     }
 }
 
@@ -131,6 +149,7 @@ void OSC_NOTEON(const user_osc_param_t* const params)
         update_frequency(params->pitch);
     }
     adenv_note_on(&g_env_state);
+    g_osc_params.lfo2_phase = (1 << 30);
 }
 
 void OSC_NOTEOFF(const user_osc_param_t* const params)
@@ -165,6 +184,24 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         // param (1..200) to amnount (-99..100)
         // ignore 0 value - logue bug
         g_osc_params.env_amount = (value > 0) ? ((int32_t)value - 100) : 0;
+        break;
+
+    case k_user_osc_param_id5:
+        // Param5: LFO2 rate (0..100)
+        float rate;
+        // exponential function approximation with 3 linear segments
+        if (value < 50)
+            rate = 0.04f * value;
+        else if (value < 80)
+            rate = 0.23f * (value - 50.f) + 2.f;
+        else
+            rate = 0.6f * (value - 80.f) + 8.9f;
+        g_osc_params.lfo2_step = (int32_t)(0.5f + (1 << 30) * rate * k_samplerate_recipf) << 2;
+        break;
+
+    case k_user_osc_param_id6:
+        // Param6: LFO2 amount (0..100)
+        g_osc_params.lfo2_amount = value;
         break;
 
     case k_user_osc_param_shape:
