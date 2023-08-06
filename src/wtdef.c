@@ -832,7 +832,17 @@ const unsigned char WAVES[NWAVES][64] = {
         39, 2, 202, 1, 247, 60, 62, 57, 16, 142, 1, 173, 142 }
 };
 
+/*
+ * Wavetable definition. A 2D table.
+ * First index: wavetable number 1..27 or 30.
+ * Second index: position in the wavetable definition.
+ * Wavetable definition values are pairs:
+ * - first item: wavetable slot (0 to 60),
+ * - second item: wave number, from WAVES table.
+ */
+#ifndef uchar
 typedef unsigned char uchar;
+#endif
 const uchar WT00[] = { 0, 79, 8, 51, 16, 52, 24, 53, 32, 54, 40, 55, 48, 56, 60, 57 };
 const uchar WT01[] = { 0, 58, 8, 59, 16, 60, 24, 61, 32, 62, 40, 63, 48, 64, 60, 65 };
 const uchar WT02[] = { 0, 79, 30, 34, 38, 96, 46, 97, 54, 103, 60, 104 };

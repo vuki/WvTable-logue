@@ -2,6 +2,12 @@
 #ifndef _WTGEN_H
 #define _WTGEN_H
 
+/*
+ * wtgen.h
+ * Wavetable generator inspired by PPG Wave
+ * Author: Grzegorz Szwoch (GregVuki)
+ */
+
 #if defined(OVS_4x)
 #define OVS 4
 #elif defined(OVS_2x)
@@ -10,16 +16,10 @@
 #define OVS 1
 #endif
 
-/*
- * wtgen.h
- * Wavetable generator inspired by PPG Wave
- * Author: Grzegorz Szwoch (GregVuki)
- */
-
 #include <stdint.h>
+#include "compat.h"
 #include "wtdef.h"
 #include "decimator.h"
-#include "compat.h"
 
 #define MAXPHASE 128.f
 #define MAX_TABLE 61

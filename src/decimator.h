@@ -9,6 +9,7 @@
  * The code is based on hiir library by Laurent de Soras
  * http://ldesoras.free.fr/prod.html#src_hiir
  * Filter order 8, stopband rejection 69 dB, transition band width 0.01.
+ * Author: Grzegorz Szwoch (GregVuki)
  */
 
 #include "compat.h"
