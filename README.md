@@ -105,9 +105,11 @@ The oscillator can be installed in the synthesizer like any other compatible osc
 
 With **Sound Librarian** : start the application and make sure that it communicates with the synthesizer via the USB MIDI port. Switch to the _User Oscillators_ tab. Click the _User OSC/FX Receive All_ button and wait until the list is populated. Drag the oscillator file onto a selected slot. Press the _User OSC/FX Send All_ button. Done.
 
-With **logue-cli** : run the following command, substituting the slot number 0-15 for # and providing the path to the correct oscillator file version for the synthesizer (example for _Minilogue xd_):
+With **logue-cli** : run the following command, substituting the slot number 0-15 for ```#``` and providing the path to the correct oscillator file version for the synthesizer (example for _Minilogue xd_):
 
+```
 logue-cli load -u WvTable.mnlgxdunit -s #
+```
 
 # Building
 
