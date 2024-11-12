@@ -5,3 +5,5 @@ build
 *.*_
 ttt.*
 *.ttt
+/juce_plugin/JUCE
+/juce_plugin/build
