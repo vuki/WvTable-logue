@@ -96,7 +96,8 @@ __fast_inline int32_t generate_sample(int32_t mod_rate)
         nwave_new = (uint32_t)((((int32_t)nwave_new >> 1) + nwave_mod) << 1);
     }
     if (nwave_new != g_osc_params.set_wavenum) {
-        set_wave_number(&g_gen_state, nwave_new);
+        // set_wave_number(&g_gen_state, nwave_new);
+        set_wave_number(&g_gen_state, (int32_t)(nwave_new >> 1)); // FIXME !!!
         g_osc_params.set_wavenum = nwave_new;
     }
 

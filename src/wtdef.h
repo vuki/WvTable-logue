@@ -8,7 +8,7 @@
  * extracted from PPG WAVE 2.3 ROM
  */
 
-#define NWAVES 204
+#define NWAVES 220
 #define WT_SYNC 28
 #define WT_STEP 29
 #define WT_UPPER 30
