@@ -211,9 +211,9 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         break;
 
     case k_user_osc_param_shiftshape:
-        // Shift+Shape: phase distortion
+        // Shift+Shape: phase skew
         // breakpoint = 64 - (value/16)
-        set_phase_distortion(&g_gen_state, (uint32_t(1024) - (uint32_t)value) << 21);
+        set_skew(&g_gen_state, (uint32_t(1024) - (uint32_t)value) << 21);
         break;
 
     default:

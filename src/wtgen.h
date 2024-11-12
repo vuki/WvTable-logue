@@ -50,9 +50,9 @@ typedef struct {
     float phase_scaler; // 1/(ovs*srate)
     float sync_step; // sync step for wavetable 28
     float sync_period; // sync period for wavetable 28
-    uint32_t pd_bp; // phase distortion breakpoint, UQ7.25
-    float pd_r1; // phase distortion rate below the breakpoint
-    float pd_r2; // phase distortion rate above the breakpoint
+    uint32_t skew_bp; // phase skew breakpoint, UQ7.25
+    float skew_r1; // phase skew rate below the breakpoint
+    float skew_r2; // phase skew rate above the breakpoint
     int32_t last_wavenum; // last wave number that was set
     uint8_t last_wtnum; // last wavetable number that was set
 #if OVS != 1
@@ -82,8 +82,8 @@ _INLINE void wtgen_init(WtGenState* state, float srate)
     state->phase_scaler = 1.f / (OVS * srate);
     state->sync_step = 1.f;
     state->sync_period = 128.f;
-    state->pd_bp = 0;
-    state->pd_r1 = state->pd_r2 = 1.f;
+    state->skew_bp = 0;
+    state->skew_r1 = state->skew_r2 = 1.f;
     state->last_wavenum = 0;
     state->last_wtnum = 255;
 
@@ -122,19 +122,19 @@ _INLINE void set_frequency(WtGenState* state, float freq)
     state->recip_step = 0.0078125f / step_f; // (1/128)/step_f
 }
 
-/*  set_phase_distortion
-    Sets phase distortion for wave readout.
-    bp: phase breakpoint as UQ7.25; 0 disables the pd.
+/*  set_skew
+    Sets the phase skew for wave readout.
+    bp: phase breakpoint as UQ7.25; 0 disables the skew.
 */
-_INLINE void set_phase_distortion(WtGenState* state, uint32_t bp)
+_INLINE void set_skew(WtGenState* state, uint32_t bp)
 {
     if ((bp > 0) && (bp < 0x80000000)) {
-        state->pd_bp = bp;
+        state->skew_bp = bp;
         const float fbp = bp * Q25TOF;
-        state->pd_r1 = 64.f / fbp;
-        state->pd_r2 = 64.f / (128.f - fbp);
+        state->skew_r1 = 64.f / fbp;
+        state->skew_r2 = 64.f / (128.f - fbp);
     } else {
-        state->pd_bp = 0;
+        state->skew_bp = 0;
     }
 }
 
@@ -257,7 +257,7 @@ _INLINE float generate(WtGenState* state)
             // standard waves
             uint8_t pos, pos2; // integer sample position, 0..128
             float alpha; // fractional part of the sample position
-            if (!state->pd_bp) {
+            if (!state->skew_bp) {
                 pos = (uint8_t)(state->phase >> 25); // UQ7
                 if (state->wtmode != WTMODE_NOINT)
                     alpha = (float)(state->phase & MASK_25) * Q25TOF;
@@ -266,10 +266,10 @@ _INLINE float generate(WtGenState* state)
             } else {
                 // apply phase distortion
                 float fpos;
-                if (state->phase <= state->pd_bp) {
-                    fpos = state->pd_r1 * state->phase * Q25TOF;
+                if (state->phase <= state->skew_bp) {
+                    fpos = state->skew_r1 * state->phase * Q25TOF;
                 } else {
-                    fpos = state->pd_r2 * (state->phase - state->pd_bp) * Q25TOF + 64.f;
+                    fpos = state->skew_r2 * (state->phase - state->skew_bp) * Q25TOF + 64.f;
                 }
                 pos = (uint8_t)fpos;
                 alpha = (state->wtmode != WTMODE_NOINT) ? (fpos - pos) : 0.f;
