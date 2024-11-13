@@ -1,101 +1,146 @@
 # WvTable-logue
 
-This is a custom oscillator for the Korg _Minilogue-xd_ synthesizer. It may also work on _NTS-1_ and _Prologue_, but it was not tested. It is not compatible with _Drumlogue_. The oscillator implements a wavetable signal generator, inspired by _PPG Wave_ instruments from early 80s. However, it is not meant to be an emulation of these synthesizers. A single oscillator is implemented, using waves and wavetables extracted from _PPG Wave 2.3_ ROM. Wavetables can be swept manually, as well as with an envelope generator or an LFO. Due to the limited wave resolution, the oscillator produces lo-fi sounds, with audible, high-pitched distortion, similar to the original PPG instruments.
+This is a custom oscillator for the Korg _Minilogue-xd_ synthesizer. It may also work on _NTS-1_ and _Prologue_, but it was not tested. It is not compatible with other logue instruments. 
+
+WvTable-logue is a wavetable oscillator inspired by _PPG Wave_ instruments from early 80s. It uses the waves and wavetables from the _PPG Wave 2.3_ ROM. However, it is not intended to be an emulation of the _PPG Wave_, which used two independent wavetable oscillators, each with a suboscillator, running at a sampling rate c.a. 195 kHz. Due to the limited computing power of the _Cortex-M4_ processor in Minilogue-xd, only a single oscillator, running at a sample rate 96 kHz, is implemented. However, the wavetable can still be swept, either manually or with a LFO or an envelope. Thanks to the low-resolution waves, the oscillator produces lo-fi sounds, with audible, high-pitched distortion, similar to the original PPG instruments.
 
 # Parameters
 
 All parameters are described in more detail further in the document.
 
-| Parameter   | Range        | Decription                                                                                       |
-| ----------- | ------------ | ------------------------------------------------------------------------------------------------ |
-| Shape       | 0-100%       | Wave position in the wavetable, in percentage of the wavetable length (0 to 128).                |
-| Shift+Shape | 0-100%       | Phase distortion amount. 0: no distortion, 100%: maximum distortion.                             |
-| Wavetable   | 0-60         | Wavetable number. 0-29: mode 1 (base + upper wavetable). 30-60: mode 2 (only base wavetable).    |
-| Env Attack  | 0-100        | Attack time of the wave number modulation envelope.                                              |
-| Env Decay   | 0-100        | Decay time of the wave number modulation envelope.                                               |
-| Env Amount  | -99% to 100% | Amount of the wave number modulation envelope. 100% is 100 wavetable positions.                  |
-| LFO2 Rate   | 0-100        | Rate (frequency) of the additional LFO modulating the wave number.                               |
-| LFO2 Amount | 0-100        | Amount (amplitude) of the additional LFO modulating the wave number, in the wavetable positions. |
+| Parameter                   | Range      | Decription                                                                                                                                                                                                                                                                                                 |
+| --------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Shape                       | 0-100      | Wavetable index, in percentage of the wavetable length (0 to 61).<br/> The index is (shape * 0.61)                                                                                                                                                                                                         |
+| Shift+Shape                 | 0-100      | [Wavecycle skew](#wavecycle-skew) amount. 0: no skew, 100%: maximum skew.                                                                                                                                                                                                                                  |
+| Parameter 1<br/>Wavetable   | 0-95       | [Wavetable number](#wavetables).<br/>0-31: [Mode 1](#mode-1-wavetables-0---31) (fractional index, sample interpolation).<br/>32-63: [Mode 2](#mode-2-wavetables-32---63) (integer index, sample interpolation).<br/> 64-95: [Mode 3](#mode-3-wavetables-64---95) (integer index, no sample interpolation). |
+| Parameter 2<br/>Env Attack  | 0-100      | Attack time of the wavetable index [envelope](#wavetable-index-envelope).                                                                                                                                                                                                                                  |
+| Parameter 3<br/>Env Decay   | -99 to 100 | Decay or release time of the wavetable index [envelope](#wavetable-index-envelope).<br/>Negative values: decay time (AD envelope).<br/>Positive values: release time (ASR envelope). envelope.                                                                                                             |
+| Parameter 4<br/>Env Amount  | -99 to 100 | Amount of the wavetable index [envelope](#wavetable-index-envelope).                                                                                                                                                                                                                                       |
+| Parameter 5<br/>LFO2 Rate   | 0-100      | [LFO2](#wavetable-index-modulation-with-lfo--lfo2) wavetable index modulation rate (frequency).                                                                                                                                                                                                            |
+| Parameter 6<br/>LFO2 Amount | 0-100      | [LFO2](#wavetable-index-modulation-with-lfo--lfo2) wavetable index modulation depth (amplitude).                                                                                                                                                                                                           |
 
 
-# Waves and wavetables
+# Wavetable synthesis in _WvTable_
 
 This oscillator implements the wavetable synthesis method, as designed by Wolfgang Palm in early 1980s and implemented in his _PPG Wave_ synthesizers. Here, the term _wavetable_ means "a table of waves", not "a table of wave samples", as it is commonly used nowadays. Please refer to [this document](https://www.hermannseib.com/documents/PPGWTbl.pdf) for the depiction of the original PPG waves and wavetables.
 
-A _wave_ (or _wavecycle_) is a single period of a harmonic wave, stored digitally in memory. A waveform is produced by cyclic reading of the wave samples from memory. The PPG synthesizer waves consist of 64 samples of the first half of the cycle. The second half is the same as the first one but inverted in time and amplitude. The whole wave cycle is therefore antisymmetric and consists of 128 samples, stored with 8-bit resolution. There are 204 unique waves in the oscillator.
+A _wavecycle_ is a single period of a harmonic wave, stored digitally in memory. A continuous wave is produced by cyclic reading of the wavecycle samples from memory. The PPG synthesizer wavecycles consist of 64 samples of the first half of the cycle. The second half is the same as the first one but mirrored in time and amplitude. The whole wavecycle is therefore antisymmetric and consists of 128 samples, stored with 8-bit resolution. There are 220 unique waves in the oscillator.
 
-A _wavetable_ is an ordered collection of waves. _Wave number_ is the position inside the wavetable. The original _PPG Wave_ had 31 wavetables, numbered 0-30, with 64 waves each. Wavetable 30 (the upper wavetable) was special, it could be stacked on top of another wavetable, resulting in a wavetable of 128 positions. Some positions in the wavetable were filled with waves stored in memory, the remaining ones were interpolated (crossfaded). The wavetables 28 (sync wave) and 29 (step wave) were fully calculated.
+A _wavetable_ is an ordered collection of waves. _Wave index_ is the position inside the wavetable. The index may be modulated while the wave is generated, which is called a _wavetable sweep_. This is the characteristic feature of this synthesis method, whichh makes the produced sound dynamic and live. The index may be modulated either manually or with an LFO and an envelope generator.
 
-_Wave sweep_ is a modulation of the wave number (wavetable position) during sound generation. Changing the wave number modifies the sound timbre. Modulation may be performed manually, with LFO or with an envelope generator. Wave sweep is the main feature of the characteristic _PPG Wave_ sound. Most wavetables have smooth transitions between the neighboring waves, which gives a pleasant effect. There are exceptions – some wavetables have abrupt wave changes (e.g., wavetable 20, 22, 25 or 30). During the sweep, the wave number wraps around the range.
 
-This oscillator uses different wavetable layout from the original _PPG Wave_ tables. Each wavetable has 128 positions, and the wave number may be fractional (unlike the _PPG Wave_ that used only integer wave numbers). There are 61 wavetables, in two modes.
 
-**Mode 1 (wavetables 0 to 29)**
+# Wavetables
 
-- Wave numbers 0-60: _base_ wavetable, waves 0-60 from _PPG_ wavetables 0-29.
-- Wave numbers 64-124: _upper_ wavetable (30 from _PPG_), _in reversed order_ (waves 60-0).
-- Wave numbers 60-64 and 124-0: transitions between the wavetables.
+The oscillator uses 32 __wavetables__. similar to the ones used in the _PPG Wave_. Each wavetable may be used in one of three modes (see below), which gives a total of 96 wavetables that can be selected.
 
-**Mode 2 (wavetables 30 to 60)**
+Each wavetable has 61 positions, numbered 0 to 61. Selected __wavecycles__, stored in the memory, are placed at the defined positions within the wavetable. The remaining positions are filled by interpolation (morphing) of the memory wavecycles. The __wavetable index__ defines the wave that is used for generating the continuous wave, by looping the wavecycle. In Mode 1, the index may be a fractional number, while in the Modes 2 and 3, the index must be an integer.
 
-- Wave numbers 0-60: waves 0-60 from _PPG_ wavetables 0-30.
-- Wave numbers 64-124: the same wavetable, _in reversed order_ (waves 60-0).
-- Wave numbers 60-64 and 124-0: the same wave (60 and 0) repeated.
+The original _PPG Wave_ wavetables had 64 integer positions, with the standard waves at positions 60-63 (a triangle, a pulse, a square and a saw; see [this document](https://www.hermannseib.com/documents/PPGWTbl.pdf)). In this oscillator, these waves are omitted, as they are not needed (they are available in the analog oscillators) and they disrupt the wavetable sweep, resulting in a harsh sound. Unlike the original wavetables, a memory wavecycle is also available at the last position (61).
 
-Mode 1 is more suitable for small wave number modulation, or no modulation at all. It gives an easy access to the waves from the upper wavetable. Mode 2 is better for wide wavetable sweeps, resulting in smooth transitions between the waves.
+Most of the wavetables have a smooth transition between the adjacent wavecycles. Wavetables 20, 22, 25 and 30 have more rapid changes between the wavecycles.
 
-The original _PPG Wave_ wavetables had standard waves at positions 60-63 (a triangle, a pulse, a square and a saw). In this oscillator, these waves are omitted, as they are not needed (they are available in the analog oscillators) and they disrupt the wavetable sweep, resulting in a harsh sound.
+Wavetable 13 is broken - it contains random data (a digital noise) instead of wavecycles. It was like this in the original wavetables, so this oscillator also uses the same wavetable (some people actually like it). The original, intended wavecycles were overwritten by other data.
 
-# Wave envelope
+Wavetable 26 is corrupted by the overflow errors - the original wavetable is retained in this oscillator.
 
-The oscillator has a simple, two-stage (attack-decay, AD) envelope for wave number modulation. The envelope has three parameters: the _attack time_, the _decay time_ and the _amount_. At the _Note On_ event, the envelope is activated, the wave number changes from the base value (set with the _Shape_ controller) to (base + amount) in the attack time, then it goes back to the base value in the decay time. The amount may be positive or negative. The wave number wraps around the range (128 becomes 0, -1 becomes 127, etc.).
+Wavetables 28 (sync) and 29 (step) are special - they are computed in memory. The waves generated in this oscillator are slightly different from the original wavetables, especially the wavetable 28 in Mode 1. The wavetable 29 is not really usefull (it's jut a PWM wave), but it's left here for completeness.
 
-The amount is expressed in wavetable positions, the maximum modulation is ±100 wave numbers. Due to the _Minilogue xd_ bug, when the oscillator is loaded into memory, the display shows value -99% for the amount parameter, but the actual value is 0.
+Wavetable 30 is the _upper wavetable_ - here each integer index in the wavetable corresponds to a different wavecycle (there are no smooth transitions). This wavetable is normally used by selecting a specific wavecycle, it is not meant for sweeping the table.
 
-The attack and the decay times can be set as parameter values 0-100, which corresponds to the range 0 to almost 10 seconds, and the relation is exponential (see the table below). The exact equation is: $time = 0.1 * exp(0.046 * param)$. Either time may be zero, in that case the envelope transitions to the next stage immediately. If both times are set to zero, the envelope does not run.
+Wavetable 31 is the same as wavetable 26, but with the overflow errors fixed.
+
+
+# Wavetable modes
+
+Each of the 32 wavetables may be used in one of three modes.
+
+## Mode 1: wavetables 0 - 31
+
+In Mode 1, the wavetable index may be any fractional number between 0 and 61. When the wavetable is swept, the memory wavecycles are interpolated (smoothed), so that the changes in the timbre are smooth. Also, sample values within the wavecycle are interpolated linearly, so the resulting wave is smooth (as much as the linear interpolation allows). This mode provides the cleanest sound, with the least amount of distortion, and it allows for smooth modulation of the wave index.
+
+## Mode 2: wavetables 32 - 63
+
+Mode 2 uses the same wavetables, but the wavetable index must be an integer (the fractional part of the index is cut off). This mode makes it easier to select a specific integer position in the wavetable. However, when the table is swept, changes in the timbre are more rapid and more audible (a stepping effect may be observed). The wave values between the samples are still interpolated, so the resulting wave is as smooth, as in the Mode 1.
+
+## Mode 3: wavetables 64 - 95
+
+In Mode 3, the wavecycles are selected the same way as in the Mode 2, but additionally, there is no interpolation between the samples (sample positions are integers), This mode is the closest to the original _PPG Wave_ oscillator and it produces the most dirty signal of all three modes, with the largest amount of distortion. The resulting waves are not smooth, but stepped, which is the most evidennt for lower frequencies (a low-pass filter in the synthesizer removes some of these distortion).
+
+
+# Wavetable index modulation
+
+The wavetable index is set by the use, bit it can also modulated during the sound production, which allows for dynamic changes in timbre. The index may be modulated:
+
+- manually, with the _Shape_ knob,
+- manually, with the joystick or any MIDI controller assigned to the _Shape_ parameter,
+- with the LFO of the synth, routed to the _Shape_ parameter,
+- with the additional, triangular LFO in the oscillator,
+- with the simple envelope generator in the oscillator.
+
+The effect of all the oscillators is cumulative.
+
+It is possible that the modulated wavetable index will go beyond the range 0 to 61. In this case, the values outside this range are mirrored (folded). For example, 62 becomes 60, -3 becomes 3, etc. This allows for more drastic timbre changes if the modulation depth is high.
+
+
+## Wavetable index envelope
+
+The oscillator has a simple, two-stage (attack-decay, AD) envelope for wave number modulation. Depending on the settings, it may operate as an AD (_attack-decay_) or ASR (_attack-sustain-release_) envelope. The envelope generator has three parameters: the _attack time_, the _decay/release time_ and the _amount_ (which may be positive or negative). 
+
+The AD envelope is used if the _decay/release time_ parameter is negative - the absolute value of this parameter is the decay time. At the _Note On_ event, the envelope is activated, the wavetable index changes from the base value (set with the _Shape_ controller) to (base + amount) in the attack time, then it immediately goes back to the base value in the decay time.
+
+The ADS envelope is used if the _decay/release time_ parameter is positive or zero. At the _Note On_ event, the envelope is activated, the wavetable index changes from the base value to (base + amount) in the attack time, and stays at this level. At the _Note Off_ event, the index goes back to the base value in the release time.
+
+The amount is expressed in wavetable positions, the maximum modulation is ±100 wave numbers. Due to the way the _Minilogue xd_ works, when the oscillator is loaded into memory, the display shows that the amount  value is -99%, but the actual value is 0.
+
+The attack and the decay/release times can be set as parameter values 0-100, which corresponds to the range 0 to almost 10 seconds, and the relation is exponential (see the table below). The exact equation is: $time = 0.1 * exp(0.046 * param)$. Either time may be zero, in that case the envelope transitions to the next stage immediately. If both times are set to zero, the envelope does not run.
 
 | Parameter value           |    0 |   35 |   50 |   65 |   85 |  100 |
 | ------------------------- | ---: | ---: | ---: | ---: | ---: | ---: |
 | Envelope time, in seconds |    0 |  0.5 |    1 |    2 |    5 | 9.95 |
 
-# Wave LFO & LFO2
+
+## Wavetable index modulation with LFO & LFO2
 
 A low frequency oscillator (LFO) may be used for a cyclic modulation of the wave number. There are two LFOs available: the main one from the synthesizer, and an additional one (LFO2) in the oscillator. Both LFOs may be used at the same time.
 
-Both LFOs become active only after the wave envelope has completed the decay stage. If the envelope attack or/and decay time is nonzero, the LFO is effectively delayed, even if the envelope amount is zero.
+If the main LFO of the instrument is routed to the Shape parameter, it is used by the oscillator to modulate the wave number, according to the _Rate_ and _Intensity_ values set with the instrument knobs. The maximum modulation range is near 128 wavetable positions. The main LFO influences the wavetable index value for the whole duration of the sound.
 
-If the main LFO of the instrument is routed to the Shape parameter, it is used by the oscillator to modulate the wave number, according to the _Rate_ and _Intensity_ values set with the instrument knobs. The maximum modulation range is near 128 wavetable positions.
+A supplementary LFO2 is available in the oscillator. This LFO uses a triangular wave only. Activating the LFO2 for the wave number modulation allows using the main LFO for the cutoff or pitch modulation. Contrary to the main LFO, the LFO2 influences the wavetable index __only if the envelope is not in the attack or the decay/release stage__. In the AD envelope, the LFO2 is active after the decay phase finishes. In the ASR envelope, the LFO2 is active after the attack phase is completed. Note: if the envelope attack time is nonzero, the LFO is effectively delayed, even if the envelope amount is zero.
 
-There is a supplementary LFO2 implemented in the oscillator, which uses a triangular wave only. Activating the LFO2 for the wave number modulation allows using the main LFO for the cutoff or pitch modulation. The LFO2 is controlled by two parameters: _rate_ (LFO frequency) and _amount_ (LFO amplitude), both set as parameter values 0 to 100. For the LFO amount, the value is scaled in wavetable positions. The LFO rate can be set in the range 0-20 Hz, and the relation is approximately exponential, as shown in the table below.
+The LFO2 is controlled by two parameters: _rate_ (LFO frequency) and _amount_ (LFO amplitude), both set as parameter values 0 to 100. For the LFO amount, the value is scaled in wavetable positions. The LFO rate can be set in the range 0-20 Hz, and the relation is approximately exponential, as shown in the table below.
 
 | Parameter value  |    0 |   13 |   25 |   50 |   63 |   82 |   90 |  100 |
 | ---------------- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
 | LFO2 rate, in Hz |    0 | 0.52 |    1 |    2 |    5 | 10.1 | 14.9 | 20.3 |
 
-# Phase distortion
 
-Phase distortion was not present in the original _PPG Wave_ oscillators. It is an additional method of modifying the wave shape and the sound timbre. It is controlled with _Shift+Shape_.
+# Wavecycle skew
 
-The wave cycles read from memory are composed from two half-cycles. The first half is read as is, the second one is read back-to-front, with inverted amplitude. If the phase distortion is disabled, both halves of the cycle are read with the same speed, and the resulting complete cycle is perfectly antisymmetric.
+Wavecycle skew is an additional function that was not present in the original _PPG Wave_ oscillators. It is an additional method of modifying the wavecycle shape and the sound timbre. It is controlled with _Shift+Shape_.
 
-Activating the phase distortion breaks this symmetry: the first half of the cycle is read faster, and the second half is read slower. The wave cycle becomes asymmetric, and this has a significant influence on the sound timbre. The larger the phase distortion parameter, the larger the difference in the read speed.
+The wavecycles read from memory are composed from two half-cycles. The first half is read as is, the second one is read back-to-front, with inverted amplitude. If the skew is set to zero, both halves of the cycle are read with the same speed, and the resulting complete cycle is perfectly antisymmetric.
 
-Phase distortion has no effect on the wavetables that are calculated (the lower part of the wavetables 28 and 29, and the whole wavetables 58 and 59).
+Increasing the skew value breaks this symmetry: the first half of the cycle is shorttened, and the second half is extended. The wave cycle loses its symmetry, which has a significant influence on the sound timbre. The larger the skew value, the more audible difference inthe timbre is obtained.
+
+Skew has no effect on the wavetables 28 (sync) and 29 (step), as they do not use the wavecycles read from the memory.
+
 
 # About the sound quality
 
-*PPG Wave*s were early hybrid (digital-analog) synthesizers and as such, they were limited by the available technology. As a result, the sound they produced was distorted, with audible high-pitched components. This distortion is especially noticeable for higher pitches, and for waves with a complex shape and a wide range of spectral components. Nowadays, this lo-fi character of synthetic sounds is considered a feature of these synthesizers.
+*PPG Wave*s were early hybrid (digital-analog) synthesizers and as such, they were limited by the available technology. The samples were stored with 8-bit resolution, the cycles were only 128 samples long, no interpolation was used, no anti-aliasing measures were applied. As a result, the sound they produced was distorted, with audible high-frequency, non-harmonic components. This distortion is especially noticeable for higher pitches, and for waves with a complex shape and a wide range of spectral components. Nowadays, this lo-fi character of synthetic sounds is considered a feature of these synthesizers.
 
 There are two main causes of the synthetic sound distortion.
 
 1. _Interpolation errors_. Interpolation is reading wave samples or waves from the wavetable at positions that are not integers. The original _PPG Wave_ oscillators did not use any interpolation in these cases – fractional part of the position was simply truncated. Because there are only 128 samples per cycle, and the samples are stored with 8-bit resolution, the resulting wave shape is not smooth, it is more a piecewise-linear function. This results in adding frequency components to the signal. The higher the wave frequency, the higher the level of distortion.
 2. _Aliasing_. Pitch shifting upwards of the waves read from memory causes the frequency components to go above the half of the sampling rate, resulting in aliasing, which has similar character of distortion to the interpolation errors. Unconfirmed sources say that the original _PPG Wave_ oscillator used about 195 kHz sampling rate, which limited the aliasing distortion to some degree. Still, they are clearly audible for higher pitches, especially for waves with rich frequency content.
 
-In this implementation of the wavetable oscillator, the first problem is partially mitigated by applying a linear interpolation when samples are read from non-integer positions, as well as when reading wavetables at non-integer positions (which was not possible in the original oscillator). As a result, the produced wave is smoother, with reduced audible distortion.
+In this implementation of the wavetable oscillator, the first problem is partially mitigated by applying a linear interpolation when samples are read from non-integer positions, as well as when reading wavetables at non-integer positions (which was not possible in the original oscillator). As a result, the produced wave is smoother, with reduced audible distortion. Modes 2 and 3 disable the interpolation, so the distortion is more audible.
 
 On the other hand, this oscillator generates wave samples at a 96 kHz sampling rate, which is twice the actual sample rate of the synthesizer, but only a half of the alleged sampling rate of the _PPG Wave_. This is as much as the limited processing power of the Cortex-M4 processor used in the _Minilogue xd_ allows for. Therefore, the aliasing distortion in this oscillator are more audible than for _PPG Wave_, especially at higher pitches.
 
 To conclude: this lo-fi, retro character of the sound produced with this oscillator should be considered a feature. The distortion amount can of course be reduced by decreasing the filter cutoff.
+
 
 # Installing
 
@@ -111,9 +156,10 @@ With **logue-cli** : run the following command, substituting the slot number 0-1
 logue-cli load -u WvTable.mnlgxdunit -s #
 ```
 
+
 # Building
 
-The GitHub repository contains a minimized version of `logue-sdk`. To build the oscillator, one needs only a supported compiler (GCC for ARM), as well as `make` and `zip` utilities installed.
+The GitHub repository contains a minimized version of `logue-sdk`. To build the oscillator, you only need a supported compiler (GCC for ARM), as well as `make` and `zip` utilities installed.
 
 Scripts in the `logue-sdk/tools/gcc_ directory` download the compiler, version `gcc-arm-none-eabi-10-2020-q4-major`. This version was tested by the author, but other GCC versions should work as well.
 
@@ -125,11 +171,12 @@ If you already have a working compiler installed, you can pass the location of a
 make install GCC_BIN_PATH=../../gcc-arm-none-eabi-10-2020-q4-major/bin
 ```
 
+
 # License
 
 The software is licensed under the terms of the GNU General Public License v3.0. See the LICENSE.md file for details.
 
-The data contained in the _wtdef.c_ file was extracted from the _PPG Wave 2.3_ ROM, publicly available on the Internet. The author of the project does not claim any rights to this data. Legal status of this data is unclear. In the post on the KVR forum made in June 2011, Hermann Seib stated that "... the wavetables that have been copied from the PPG range of synthesizers. These, as I've been assured by Wolfgang Palm, are not protected in any way" ([source](https://www.kvraudio.com/forum/viewtopic.php?t=321167)). However, the situation might have changed, especially after PPG was acquired by Plugin Alliance in March 2020. Be advised.
+The data contained in the _wtdef.c_ file was extracted from the _PPG Wave 2.3_ ROM, publicly available on the Internet. The author of the project does not claim any rights to this data. According to the author's knowledge, this data is not protected by any active patents. In the post on the KVR forum made in June 2011, Hermann Seib stated that "... the wavetables that have been copied from the PPG range of synthesizers. These, as I've been assured by Wolfgang Palm, are not protected in any way" ([source](https://www.kvraudio.com/forum/viewtopic.php?t=321167)).
 
 # References
 
