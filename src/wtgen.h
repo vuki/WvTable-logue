@@ -320,7 +320,7 @@ _INLINE float generate(WtGenState* state)
             // wavetable 29: step wave (with PolyBLEP)
             const float pos = (float)state->phase * Q25TOF;
             const float phase_step = (float)(state->step) * Q25TOF;
-            const float edge = 69.f + state->alpha_w; // transition high->low
+            const float edge = 64.f + state->alpha_w; // transition high->low
             y[n] = (pos < edge) ? 32.f : -32.f;
             if (pos < phase_step) {
                 const float t = pos * state->recip_step;
