@@ -37,7 +37,7 @@
 #define MASK_7 0x7f
 #define MASK_6 0x3f
 
-typedef struct {
+typedef struct WtGenState {
     uint8_t wavetable[64][4]; // wavetable definition
     uint8_t wtnum; // wavetable number
     uint8_t wtmode; // wavetable mode
@@ -61,10 +61,17 @@ typedef struct {
 #if OVS == 4
     DecimatorState decimator2;
 #endif
+    float (*generate)(struct WtGenState*); // pointer to function generating samples
 } WtGenState;
 
 _INLINE void set_wavetable(WtGenState* state, uint8_t ntable);
 _INLINE void set_wave_number(WtGenState* state, int32_t wavenum);
+float generate_wavecycles(WtGenState* state);
+float generate_wavecycles_noint(WtGenState* state);
+float generate_wt28(WtGenState* state);
+float generate_wt28_noint(WtGenState* state);
+float generate_wt29(WtGenState* state);
+float generate_wt29_noint(WtGenState* state);
 
 /*  wtgen_init
     Initialize the generator
@@ -135,6 +142,8 @@ _INLINE void set_skew(WtGenState* state, uint32_t bp)
         state->skew_r2 = 64.f / (128.f - fbp);
     } else {
         state->skew_bp = 0;
+        // state->skew_bp = 64.f;
+        // state->skew_r1 = state->skew_r2 = 1.f;
     }
 }
 
@@ -152,7 +161,29 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
     state->wtnum = ntable & 0x1F; // lower 5 bits: wavetable number, 0..31
     state->wtmode = (ntable >> 5) & 0x03; // upper bits: wavetable mode
 
-    if (state->wtnum != WT_SYNC && state->wtnum != WT_STEP) {
+    switch (state->wtnum) {
+
+    case WT_SYNC:
+        switch (state->wtmode) {
+        case WTMODE_NOINT:
+            state->generate = &generate_wt28_noint;
+            break;
+        default:
+            state->generate = &generate_wt28;
+        }
+        break;
+
+    case WT_STEP:
+        switch (state->wtmode) {
+        case WTMODE_NOINT:
+            state->generate = &generate_wt29_noint;
+            break;
+        default:
+            state->generate = &generate_wt29;
+        }
+        break;
+
+    default:
         // Build wavetable indices for wave interpolation
         // entry 1: lower wave number
         // entry 2: upper wave number
@@ -180,6 +211,14 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
         state->wavetable[60][1] = w2;
         state->wavetable[60][2] = 0;
         state->wavetable[60][3] = 1;
+
+        switch (state->wtmode) {
+        case WTMODE_NOINT:
+            state->generate = &generate_wavecycles_noint;
+            break;
+        default:
+            state->generate = &generate_wavecycles;
+        }
     }
 
     const int32_t last_wn = state->last_wavenum;
@@ -209,7 +248,24 @@ _INLINE void set_wave_number(WtGenState* state, int32_t wavenum)
     const uint8_t nwave_i = (int)nwave; // integer part of the wave number, 0..60
     const float nwave_f = (float)nwave - nwave_i; // fractional part of the wave number
 
-    if (state->wtnum != WT_SYNC && state->wtnum != WT_STEP) {
+    switch (state->wtnum) {
+    case WT_SYNC:
+        // Wavetable 28 - sync
+        // store floating point wave number
+        state->alpha_w = (state->wtmode == WTMODE_INT2D) ? nwave : (float)nwave_i;
+        // amplitude step for one sample (scaler value found experimentally)
+        state->sync_step = state->alpha_w * 0.0859375f + 1.f;
+        // sync period - amplitude resets after this number of samples
+        state->sync_period = (float)((int)(0.99999999f + MAX_PHASE / state->sync_step)); // ceil
+        break;
+
+    case WT_STEP:
+        // Wavetable 29 - step
+        // store floating point wave number
+        state->alpha_w = (state->wtmode == WTMODE_INT2D) ? nwave : (float)nwave_i;
+        break;
+
+    default:
         // Memory waves
         // find two waves used for interpolation
         state->wave[0] = state->wavetable[nwave_i][0];
@@ -221,123 +277,273 @@ _INLINE void set_wave_number(WtGenState* state, int32_t wavenum)
             // only integer wave positions
             state->alpha_w = (float)((int)state->alpha_w);
         }
-
-    } else if (state->wtnum == WT_SYNC) {
-        // Wavetable 28 - sync
-        // store floating point wave number
-        state->alpha_w = (state->wtmode == WTMODE_INT2D) ? nwave : (float)nwave_i;
-        // amplitude step for one sample (scaler value found experimentally)
-        state->sync_step = nwave * 0.0859375f + 1.f;
-        // sync period - amplitude resets after this number of samples
-        state->sync_period = (float)((int)(0.99999999f + MAX_PHASE / state->sync_step)); // ceil
-    } else if (state->wtnum == WT_STEP) {
-        // Wavetable 29 - step
-        // store floating point wave number
-        state->alpha_w = (state->wtmode == WTMODE_INT2D) ? nwave : (float)nwave_i;
     }
 }
 
 /*  generate
     Calculate and return one sample value.
+    Proxy function that calls the actual function.
     Returns: sample value, floating point, -127.5 to 127.5
 */
 _INLINE float generate(WtGenState* state)
 {
+    return state->generate(state);
+}
+
+/*  generate_wavecycles
+    Calculate and return one sample value.
+    Uses wavetables with memory waves.
+    Interpolate sample values.
+    Returns: sample value, floating point, -127.5 to 127.5
+*/
+float generate_wavecycles(WtGenState* state)
+{
     float y[OVS];
     float out1, out2;
-    uint8_t k, n, w11, w12, w21, w22;
-    // const uint32_t nwave_buf = *((uint32_t*)(&state->wave));
-    // const uint8_t* const nwave = (const uint8_t*)&nwave_buf;
+    uint8_t n, w11, w12, w21, w22;
 
     // Loop over oversampled values
     // TODO: remove this and do the oversampling outside
     for (n = 0; n < OVS; n++) {
-
-        if (state->wtnum != WT_SYNC && state->wtnum != WT_STEP) {
-            // standard waves
-            uint8_t pos, pos2; // integer sample position, 0..128
-            float alpha; // fractional part of the sample position
-            if (!state->skew_bp) {
-                pos = (uint8_t)(state->phase >> 25); // UQ7
-                if (state->wtmode != WTMODE_NOINT)
-                    alpha = (float)(state->phase & MASK_25) * Q25TOF;
-                else
-                    alpha = 0.f; // no sample interpolation
-            } else {
-                // apply phase distortion
-                float fpos;
-                if (state->phase <= state->skew_bp) {
-                    fpos = state->skew_r1 * state->phase * Q25TOF;
-                } else {
-                    fpos = state->skew_r2 * (state->phase - state->skew_bp) * Q25TOF + 64.f;
-                }
-                pos = (uint8_t)fpos;
-                alpha = (state->wtmode != WTMODE_NOINT) ? (fpos - pos) : 0.f;
-            }
-            // get sample values from the stored waves
-            if (!(pos & 0x40)) {
-                // pos 0..63 - first half of the period
-                w11 = state->pwave[0][pos];
-                w21 = state->pwave[1][pos];
-            } else {
-                // pos 64..127 - second half of the period
-                // the first falf is mirrored in time and amplitude
-                const uint8_t posr = ~pos & 0x3F;
-                w11 = ~state->pwave[0][posr];
-                w21 = ~state->pwave[1][posr];
-            }
-            pos2 = (pos + 1) & 0x7F;
-            if (!(pos2 & 0x40)) {
-                // pos 0..63 - first half of the period
-                w12 = state->pwave[0][pos2];
-                w22 = state->pwave[1][pos2];
-            } else {
-                // pos 64..127 - second half of the period
-                // the first falf is mirrored in time and amplitude
-                const uint8_t pos2r = ~pos2 & 0x3F;
-                w12 = ~state->pwave[0][pos2r];
-                w22 = ~state->pwave[1][pos2r];
-            }
-            // interpolate between samples
-            out1 = (1.f - alpha) * w11 + alpha * w12;
-            out2 = (1.f - alpha) * w21 + alpha * w22;
-            // interpolate between waves
-            y[n] = (1.f - state->alpha_w) * out1 + state->alpha_w * out2;
-            y[n] -= 127.5f; // make bipolar and compensate for DC offset
-
-        } else if (state->wtnum == WAVE_SYNC) {
-            // wavetable 28: sync wave (no aliasing protection)
-            // state->alpha_w is a floating point wave number, 0..61
-            float posf = (float)state->phase * Q25TOF; // phase 0..128
-            // subtract synched periods
-            while (posf >= state->sync_period)
-                posf -= state->sync_period;
-            y[n] = -64.f + posf * state->sync_step;
-            // TODO: PolyBlep, at 0 and at each sync point
-            // (needs the value at 128 for step length)
-
-        } else if (state->wtnum == WAVE_STEP) {
-            // wavetable 29: step wave (with PolyBLEP)
-            const float pos = (float)state->phase * Q25TOF;
-            const float phase_step = (float)(state->step) * Q25TOF;
-            const float edge = 64.f + state->alpha_w; // transition high->low
-            y[n] = (pos < edge) ? 32.f : -32.f;
-            if (pos < phase_step) {
-                const float t = pos * state->recip_step;
-                y[n] += (t + t - t * t - 1.f) * 32.f;
-            } else if (((edge - phase_step) < pos) && (pos < edge)) {
-                const float t = (pos - edge) * state->recip_step;
-                y[n] -= (t * t + t + t + 1.f) * 32.f;
-            } else if ((edge <= pos) && (pos < (edge + phase_step))) {
-                const float t = (pos - edge) * state->recip_step;
-                y[n] -= (t + t - t * t - 1.f) * 32.f;
-            } else if (pos > 128 - phase_step) {
-                const float t = (pos - 128.f) * state->recip_step;
-                y[n] += (t * t + t + t + 1.f) * 32.f;
-            }
+        // standard waves
+        uint8_t pos, pos2; // integer sample position, 0..128
+        float alpha; // fractional part of the sample position
+        if (!state->skew_bp) {
+            pos = (uint8_t)(state->phase >> 25); // UQ7
+            alpha = (float)(state->phase & MASK_25) * Q25TOF;
         } else {
-            y[n] = 0;
+            // apply phase distortion
+            const float fpos = (state->phase <= state->skew_bp)
+                ? state->skew_r1 * state->phase * Q25TOF
+                : state->skew_r2 * (state->phase - state->skew_bp) * Q25TOF + 64.f;
+            pos = (uint8_t)fpos;
+            alpha = fpos - pos;
         }
+        // get sample values from the stored waves
+        if (!(pos & 0x40)) {
+            // pos 0..63 - first half of the period
+            w11 = state->pwave[0][pos];
+            w21 = state->pwave[1][pos];
+        } else {
+            // pos 64..127 - second half of the period
+            // the first falf is mirrored in time and amplitude
+            const uint8_t posr = ~pos & 0x3F;
+            w11 = ~state->pwave[0][posr];
+            w21 = ~state->pwave[1][posr];
+        }
+        pos2 = (pos + 1) & 0x7F;
+        if (!(pos2 & 0x40)) {
+            // pos 0..63 - first half of the period
+            w12 = state->pwave[0][pos2];
+            w22 = state->pwave[1][pos2];
+        } else {
+            // pos 64..127 - second half of the period
+            // the first falf is mirrored in time and amplitude
+            const uint8_t pos2r = ~pos2 & 0x3F;
+            w12 = ~state->pwave[0][pos2r];
+            w22 = ~state->pwave[1][pos2r];
+        }
+        // interpolate between samples
+        out1 = (1.f - alpha) * w11 + alpha * w12;
+        out2 = (1.f - alpha) * w21 + alpha * w22;
+        // interpolate between waves
+        y[n] = (1.f - state->alpha_w) * out1 + state->alpha_w * out2;
+        y[n] -= 127.5f; // make bipolar and compensate for DC offset
+    }
+    state->phase += state->step;
+
+#if OVS == 4
+    y[0] = decimator_do(&state->decimator2, y[0], y[1]);
+    y[1] = decimator_do(&state->decimator2, y[2], y[3]);
+#endif
+#if OVS != 1
+    y[0] = decimator_do(&state->decimator, y[0], y[1]);
+#endif
+    return y[0];
+}
+
+/*  generate_wavecycles_noint
+    Calculate and return one sample value.
+    Uses wavetables with memory waves.
+    Do not interpolate between samples
+    Returns: sample value, floating point, -127.5 to 127.5
+*/
+float generate_wavecycles_noint(WtGenState* state)
+{
+    float y[OVS];
+    uint8_t n, w11, w21;
+
+    // Loop over oversampled values
+    // TODO: remove this and do the oversampling outside
+    for (n = 0; n < OVS; n++) {
+        uint8_t pos, pos2; // integer sample position, 0..128
+        float alpha; // fractional part of the sample position
+        if (!state->skew_bp) {
+            pos = (uint8_t)(state->phase >> 25); // UQ7
+        } else {
+            // apply phase distortion
+            const float fpos = (state->phase <= state->skew_bp)
+                ? state->skew_r1 * state->phase * Q25TOF
+                : state->skew_r2 * (state->phase - state->skew_bp) * Q25TOF + 64.f;
+            pos = (uint8_t)fpos;
+        }
+        // get sample values from the stored waves
+        if (!(pos & 0x40)) {
+            // pos 0..63 - first half of the period
+            w11 = state->pwave[0][pos];
+            w21 = state->pwave[1][pos];
+        } else {
+            // pos 64..127 - second half of the period
+            // the first falf is mirrored in time and amplitude
+            const uint8_t posr = ~pos & 0x3F;
+            w11 = ~state->pwave[0][posr];
+            w21 = ~state->pwave[1][posr];
+        }
+        // interpolate between waves
+        y[n] = (1.f - state->alpha_w) * w11 + state->alpha_w * w21;
+        y[n] -= 127.5f; // make bipolar and compensate for DC offset
+    }
+    state->phase += state->step;
+
+#if OVS == 4
+    y[0] = decimator_do(&state->decimator2, y[0], y[1]);
+    y[1] = decimator_do(&state->decimator2, y[2], y[3]);
+#endif
+#if OVS != 1
+    y[0] = decimator_do(&state->decimator, y[0], y[1]);
+#endif
+    return y[0];
+}
+
+/*  generate_wt28
+    Calculate and return one sample value from wavetable 28 (sync).
+    Interpolate between samples.
+    Returns: sample value, floating point, -127.5 to 127.5
+*/
+float generate_wt28(WtGenState* state)
+{
+    float y[OVS];
+    uint8_t n;
+
+    // Loop over oversampled values
+    // TODO: remove this and do the oversampling outside
+    for (n = 0; n < OVS; n++) {
+        // (no aliasing protection)
+        float posf = (float)state->phase * Q25TOF; // phase 0..128
+        // subtract synched periods
+        while (posf >= state->sync_period)
+            posf -= state->sync_period;
+        y[n] = -64.f + posf * state->sync_step;
+        // TODO: PolyBlep, at 0 and at each sync point
+        // (needs the value at 128 for step length)
+    }
+    state->phase += state->step;
+
+#if OVS == 4
+    y[0] = decimator_do(&state->decimator2, y[0], y[1]);
+    y[1] = decimator_do(&state->decimator2, y[2], y[3]);
+#endif
+#if OVS != 1
+    y[0] = decimator_do(&state->decimator, y[0], y[1]);
+#endif
+    return y[0];
+}
+
+/*  generate_wt28_noint
+    Calculate and return one sample value from wavetable 28 (sync).
+    Do not interpolate between samples.
+    Returns: sample value, floating point, -127.5 to 127.5
+*/
+float generate_wt28_noint(WtGenState* state)
+{
+    float y[OVS];
+    uint8_t n;
+
+    // Loop over oversampled values
+    // TODO: remove this and do the oversampling outside
+    for (n = 0; n < OVS; n++) {
+        // (no aliasing protection)
+        float posf = (float)(state->phase >> 25); // phase 0..128
+        // subtract synched periods
+        while (posf >= state->sync_period)
+            posf -= state->sync_period;
+        y[n] = -64.f + posf * state->sync_step;
+        // TODO: PolyBlep, at 0 and at each sync point
+        // (needs the value at 128 for step length)
+    }
+    state->phase += state->step;
+
+#if OVS == 4
+    y[0] = decimator_do(&state->decimator2, y[0], y[1]);
+    y[1] = decimator_do(&state->decimator2, y[2], y[3]);
+#endif
+#if OVS != 1
+    y[0] = decimator_do(&state->decimator, y[0], y[1]);
+#endif
+    return y[0];
+}
+
+/*  generate_wt29
+    Calculate and return one sample value from wavetable 29 (step).
+    Interpolate between samples.
+    Returns: sample value, floating point, -127.5 to 127.5
+*/
+float generate_wt29(WtGenState* state)
+{
+    float y[OVS];
+    uint8_t n;
+
+    // Loop over oversampled values
+    // TODO: remove this and do the oversampling outside
+    for (n = 0; n < OVS; n++) {
+        // wavetable 29: step wave (with PolyBLEP)
+        const float pos = (float)state->phase * Q25TOF;
+        const float phase_step = (float)(state->step) * Q25TOF;
+        const float edge = 64.f + state->alpha_w; // transition high->low
+        y[n] = (pos < edge) ? 32.f : -32.f;
+        if (pos < phase_step) {
+            const float t = pos * state->recip_step;
+            y[n] += (t + t - t * t - 1.f) * 32.f;
+        } else if (((edge - phase_step) < pos) && (pos < edge)) {
+            const float t = (pos - edge) * state->recip_step;
+            y[n] -= (t * t + t + t + 1.f) * 32.f;
+        } else if ((edge <= pos) && (pos < (edge + phase_step))) {
+            const float t = (pos - edge) * state->recip_step;
+            y[n] -= (t + t - t * t - 1.f) * 32.f;
+        } else if (pos > 128 - phase_step) {
+            const float t = (pos - 128.f) * state->recip_step;
+            y[n] += (t * t + t + t + 1.f) * 32.f;
+        }
+    }
+    state->phase += state->step;
+
+#if OVS == 4
+    y[0] = decimator_do(&state->decimator2, y[0], y[1]);
+    y[1] = decimator_do(&state->decimator2, y[2], y[3]);
+#endif
+#if OVS != 1
+    y[0] = decimator_do(&state->decimator, y[0], y[1]);
+#endif
+    return y[0];
+}
+
+/*  generate_wt29_noint
+    Calculate and return one sample value from wavetable 29 (step).
+    Do not interpolate between samples.
+    Returns: sample value, floating point, -127.5 to 127.5
+*/
+float generate_wt29_noint(WtGenState* state)
+{
+    float y[OVS];
+    uint8_t n;
+
+    // Loop over oversampled values
+    // TODO: remove this and do the oversampling outside
+    for (n = 0; n < OVS; n++) {
+        // wavetable 29: step wave (no antialiasing)
+        const uint8_t pos = state->phase >> 25;
+        const uint8_t edge = 64 + (uint8_t)state->alpha_w; // transition high->low
+        y[n] = (pos < edge) ? 32.f : -32.f;
     }
     state->phase += state->step;
 
