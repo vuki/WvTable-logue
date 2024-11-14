@@ -11,6 +11,7 @@
 #include "userosc.h"
 #include "wtgen.h"
 #include "adenv.h"
+#include "decimator.h"
 
 #define FORCE_WAVE_RELOAD 0xffffffff
 #define MASK_WAVE_UPPER 0xffc00000
@@ -34,6 +35,17 @@ struct {
 WtGenState g_gen_state;
 ADEnvState g_env_state;
 
+#if defined(OVS_4x)
+#define OVS 4
+DecimatorState g_decimator;
+DecimatorState g_decimator2;
+#elif defined(OVS_2x)
+#define OVS 2
+DecimatorState g_decimator;
+#else
+#define OVS 1
+#endif
+
 extern const uint32_t ENV_LUT[];
 
 __fast_inline void update_frequency(uint16_t pitch)
@@ -54,7 +66,7 @@ void OSC_INIT(uint32_t platform, uint32_t api)
 {
     (void)platform;
     (void)api;
-    wtgen_init(&g_gen_state, k_samplerate);
+    wtgen_init(&g_gen_state, k_samplerate * OVS);
     adenv_init(&g_env_state, k_samplerate);
     g_osc_params.frequency = 0;
     g_osc_params.base_nwave = 0;
@@ -63,6 +75,12 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     g_osc_params.env_amount = 0;
     g_osc_params.wt_num = WTNUM_FLAG;
     g_osc_params.pitch = 0;
+#if defined(OVS_4x)
+    decimator_reset(&g_decimator);
+    decimator_reset(&g_decimator2);
+#elif defined(OVS_2x)
+    decimator_reset(&g_decimator);
+#endif
 }
 
 __fast_inline int32_t generate_sample(int32_t mod_rate)
@@ -102,7 +120,25 @@ __fast_inline int32_t generate_sample(int32_t mod_rate)
     }
 
     // sample generation
-    return (int32_t)(generate(&g_gen_state) * 16777215.f + 0.5f); // float (-128..128) to Q31
+#if defined(OVS_4x)
+    // generate with 4x oversampling
+    const float y1 = generate(&g_gen_state);
+    const float y2 = generate(&g_gen_state);
+    const float y3 = generate(&g_gen_state);
+    const float y4 = generate(&g_gen_state);
+    const float y5 = decimator_do(&g_decimator2, y1, y2);
+    const float y6 = decimator_do(&g_decimator2, y5, y6);
+    const float y = decimator_do(&g_decimator, y5, y6);
+#elif defined(OVS_2x)
+    // generate with 2x oversampling
+    const float y1 = generate(&g_gen_state);
+    const float y2 = generate(&g_gen_state);
+    const float y = decimator_do(&g_decimator, y1, y2);
+#else
+    const float y = generate(&g_gen_state);
+#endif
+
+    return (int32_t)(y * 16777215.f + 0.5f); // float (-128..128) to Q31
 }
 
 void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const uint32_t nframes)
@@ -151,6 +187,12 @@ void OSC_NOTEON(const user_osc_param_t* const params)
     }
     adenv_note_on(&g_env_state);
     g_osc_params.lfo2_phase = (1 << 30);
+#if defined(OVS_4x)
+    decimator_reset(&g_decimator);
+    decimator_reset(&g_decimator2);
+#elif defined(OVS_2x)
+    decimator_reset(&g_decimator);
+#endif
 }
 
 void OSC_NOTEOFF(const user_osc_param_t* const params)
