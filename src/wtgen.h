@@ -13,15 +13,8 @@
 #include "wtdef.h"
 
 #define MAX_PHASE 128.f
-#define MAX_WAVE 61 // maximum wave index in table
-
 #define Q25TOF 2.9802322387695312e-08f
-#define Q24TOF 5.960464477539063e-08f
-#define MASK_BIT31 0x80000000
-#define MASK_31 0x7fffffff
 #define MASK_25 0x1ffffff
-#define MASK_7 0x7f
-#define MASK_6 0x3f
 
 // Wavetable modes
 typedef enum {
@@ -53,12 +46,12 @@ typedef struct WtGenState {
 
 _INLINE void set_wavetable(WtGenState* state, uint8_t ntable);
 _INLINE void set_wave_number(WtGenState* state, int32_t wavenum);
-float generate_wavecycles(WtGenState* state);
-float generate_wavecycles_noint(WtGenState* state);
-float generate_wt28(WtGenState* state);
-float generate_wt28_noint(WtGenState* state);
-float generate_wt29(WtGenState* state);
-float generate_wt29_noint(WtGenState* state);
+_INLINE float generate_wavecycles(WtGenState* state);
+_INLINE float generate_wavecycles_noint(WtGenState* state);
+_INLINE float generate_wt28(WtGenState* state);
+_INLINE float generate_wt28_noint(WtGenState* state);
+_INLINE float generate_wt29(WtGenState* state);
+_INLINE float generate_wt29_noint(WtGenState* state);
 
 /*  wtgen_init
     Initialize the generator
@@ -269,7 +262,7 @@ _INLINE float generate(WtGenState* state)
     Interpolate sample values.
     Returns: sample value, floating point, -127.5 to 127.5
 */
-float generate_wavecycles(WtGenState* state)
+_INLINE float generate_wavecycles(WtGenState* state)
 {
     float out1, out2, y;
     uint8_t w11, w12, w21, w22;
@@ -327,7 +320,7 @@ float generate_wavecycles(WtGenState* state)
     Do not interpolate between samples
     Returns: sample value, floating point, -127.5 to 127.5
 */
-float generate_wavecycles_noint(WtGenState* state)
+_INLINE float generate_wavecycles_noint(WtGenState* state)
 {
     float y;
     uint8_t n, w11, w21;
@@ -366,7 +359,7 @@ float generate_wavecycles_noint(WtGenState* state)
     Interpolate between samples.
     Returns: sample value, floating point, -127.5 to 127.5
 */
-float generate_wt28(WtGenState* state)
+_INLINE float generate_wt28(WtGenState* state)
 {
     // (no aliasing protection)
     float posf = (float)state->phase * Q25TOF; // phase 0..128
@@ -385,7 +378,7 @@ float generate_wt28(WtGenState* state)
     Do not interpolate between samples.
     Returns: sample value, floating point, -127.5 to 127.5
 */
-float generate_wt28_noint(WtGenState* state)
+_INLINE float generate_wt28_noint(WtGenState* state)
 {
     // (no aliasing protection)
     float posf = (float)(state->phase >> 25); // phase 0..128
@@ -404,7 +397,7 @@ float generate_wt28_noint(WtGenState* state)
     Interpolate between samples.
     Returns: sample value, floating point, -127.5 to 127.5
 */
-float generate_wt29(WtGenState* state)
+_INLINE float generate_wt29(WtGenState* state)
 {
     float y;
     // wavetable 29: step wave (with PolyBLEP)
@@ -434,7 +427,7 @@ float generate_wt29(WtGenState* state)
     Do not interpolate between samples.
     Returns: sample value, floating point, -127.5 to 127.5
 */
-float generate_wt29_noint(WtGenState* state)
+_INLINE float generate_wt29_noint(WtGenState* state)
 {
     // wavetable 29: step wave (no antialiasing)
     const uint8_t pos = state->phase >> 25;
