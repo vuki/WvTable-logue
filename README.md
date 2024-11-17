@@ -108,11 +108,11 @@ If the main LFO of the instrument is routed to the Shape parameter, it is used b
 
 A supplementary LFO2 is available in the oscillator. This LFO uses a triangular wave only. Activating the LFO2 for the wave number modulation allows using the main LFO for the cutoff or pitch modulation. Contrary to the main LFO, the LFO2 influences the wavetable index __only if the envelope is not in the attack or the decay/release stage__. In the AD envelope, the LFO2 is active after the decay phase finishes. In the ASR envelope, the LFO2 is active after the attack phase is completed. Note: if the envelope attack time is nonzero, the LFO is effectively delayed, even if the envelope amount is zero.
 
-The LFO2 is controlled by two parameters: _rate_ (LFO frequency) and _amount_ (LFO amplitude), both set as parameter values 0 to 100. For the LFO amount, the value is scaled in wavetable positions. The LFO rate can be set in the range 0-20 Hz, and the relation is approximately exponential, as shown in the table below.
+The LFO2 is controlled by two parameters: _rate_ (LFO frequency) and _amount_ (LFO amplitude), both set as parameter values 0 to 100. For the LFO amount, the value is scaled in wavetable positions. The LFO rate can be set in the range 0-20 Hz, and the relation is exponential, as shown in the table below.
 
-| Parameter value  |    0 |   13 |   25 |   50 |   63 |   82 |   90 |  100 |
+| Parameter value  |    0 |   25 |   37 |   50 |   70 |   85 |   94 |  100 |
 | ---------------- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| LFO2 rate, in Hz |    0 | 0.52 |    1 |    2 |    5 | 10.1 | 14.9 | 20.3 |
+| LFO2 rate, in Hz |    0 |  0.5 | 1.02 |    2 | 5.16 | 10.2 | 15.3 | 20.0 |
 
 
 # Wavecycle skew

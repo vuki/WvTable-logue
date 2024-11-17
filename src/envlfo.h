@@ -252,7 +252,7 @@ _INLINE int32_t envlfo_get(EnvLfoState* state, uint32_t steps)
             state->out_val = (int32_t)(state->env_val >> 7) * state->decay_scale;
         }
         break;
-    case ENV_S:
+    case ENV_S: {
         // in the sustain stage - the LFO is active
         // calculate the LFO value: 2 * abs(phase) - 1
         const int32_t x = (int32_t)(state->lfo_phase);
@@ -261,7 +261,7 @@ _INLINE int32_t envlfo_get(EnvLfoState* state, uint32_t steps)
         state->lfo_phase += state->lfo_step * steps;
         // scale the LFO value and add it to the envelope sustain value
         state->out_val = state->sus_val + (lfo_val >> 6) * state->lfo_amount;
-        break;
+    } break;
     default:
         // in the idle stage - the envelope and the LFO are inactive
         state->out_val = 0;
