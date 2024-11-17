@@ -75,7 +75,7 @@ __fast_inline void update_frequency(uint16_t pitch)
 #else
         // quadratic interpolation
         const float frac = (float)mod * 0.00390625f; // 1/256
-        freq += 0.00171723f * frac * frac + 0.05774266f * frac + 1.0000016f;
+        freq *= 0.00171723f * frac * frac + 0.05774266f * frac + 1.0000016f;
 #endif
     }
     set_frequency(&g_gen_state, freq);
