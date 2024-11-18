@@ -31,21 +31,21 @@ typedef struct WtGenState {
     uint8_t wave[2]; // numbers of the stored waves (indices into WAVES)
     uint8_t* pwave[2]; // pointer to samples of the waves
     float alpha_w; // linear interpolation coefficient
-    uint32_t phase; // signal phase, UQ7.25
-    uint32_t step; // step to increase the phase, UQ7.25
+    uq7_25_t phase; // signal phase, UQ7.25
+    uq7_25_t step; // step to increase the phase, UQ7.25
     float recip_step; // 1/step as float
     float phase_scaler; // 1/(ovs*srate)
     float sync_step; // sync step for wavetable 28
     float sync_period; // sync period for wavetable 28
-    uint32_t skew_bp; // phase skew breakpoint, UQ7.25
+    uq7_25_t skew_bp; // phase skew breakpoint, UQ7.25
     float skew_r1; // phase skew rate below the breakpoint
     float skew_r2; // phase skew rate above the breakpoint
-    int32_t last_wavenum; // last wave number that was set
+    q7_24_t last_wavenum; // last wave number that was set
     uint8_t last_wtnum; // last wavetable number that was set
 } WtGenState;
 
 _INLINE void set_wavetable(WtGenState* state, uint8_t ntable);
-_INLINE void set_wave_number(WtGenState* state, int32_t wavenum);
+_INLINE void set_wave_number(WtGenState* state, q7_24_t wavenum);
 _INLINE float generate_wavecycles(WtGenState* state);
 _INLINE float generate_wavecycles_noint(WtGenState* state);
 _INLINE float generate_wt28(WtGenState* state);
@@ -91,7 +91,7 @@ _INLINE void wtgen_reset(WtGenState* state)
 _INLINE void set_frequency(WtGenState* state, float freq)
 {
     const float step_f = freq * state->phase_scaler;
-    state->step = (uint32_t)(step_f * 4294967296.f); // step * 2**32
+    state->step = (uq7_25_t)(step_f * 4294967296.f); // step * 2**32
     state->recip_step = 0.0078125f / step_f; // (1/128)/step_f
 }
 
@@ -99,7 +99,7 @@ _INLINE void set_frequency(WtGenState* state, float freq)
     Sets the phase skew for wave readout.
     bp: phase breakpoint as UQ7.25; 0 disables the skew.
 */
-_INLINE void set_skew(WtGenState* state, uint32_t bp)
+_INLINE void set_skew(WtGenState* state, uq7_25_t bp)
 {
     if ((bp > 0) && (bp < 0x80000000)) {
         state->skew_bp = bp;
@@ -189,7 +189,7 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
         }
     }
 
-    const int32_t last_wn = state->last_wavenum;
+    const q7_24_t last_wn = state->last_wavenum;
     state->last_wavenum = 0xFFFFFFFF;
     set_wave_number(state, last_wn); // recalculate wave number
 }
@@ -198,7 +198,7 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
     Set the wave number - position within the wavetable.
     wavenum: requested wave number, Q7.24 (signed)
 */
-_INLINE void set_wave_number(WtGenState* state, int32_t wavenum)
+_INLINE void set_wave_number(WtGenState* state, q7_24_t wavenum)
 {
     if (wavenum == state->last_wavenum)
         return; // already set
@@ -224,7 +224,7 @@ _INLINE void set_wave_number(WtGenState* state, int32_t wavenum)
         // amplitude step for one sample (scaler value found experimentally)
         state->sync_step = state->alpha_w * 0.0859375f + 1.f;
         // sync period - amplitude resets after this number of samples
-        state->sync_period = (float)((int)(0.99999999f + MAX_PHASE / state->sync_step)); // ceil
+        state->sync_period = MAX_PHASE / state->sync_step; // ceil
         break;
 
     case WT_STEP:

@@ -20,7 +20,7 @@ typedef enum { ENV_IDLE, ENV_A, ENV_D, ENV_S } EnvStage;
 
 typedef struct {
     EnvStage stage; // current envelope stage
-    uint32_t out_val; // last computed output value, Q7.24
+    q7_24_t out_val; // last computed output value, Q7.24
     uint32_t env_val; // current envelope value, normalized to 0..1, UQ1.31
     uint32_t arate; // envelope rate for the attack stage
     uint32_t drate; // envelope rate for the decay/release stage
@@ -211,7 +211,7 @@ _INLINE void envlfo_note_off(EnvLfoState* state)
     steps: before generating the value, advance the phase by this number of samples.
     Returns: the current value, Q7.24 (-128..127).
 */
-_INLINE int32_t envlfo_get(EnvLfoState* state, uint32_t steps)
+_INLINE q7_24_t envlfo_get(EnvLfoState* state, uint32_t steps)
 {
     switch (state->stage) {
     case ENV_A:
@@ -235,7 +235,7 @@ _INLINE int32_t envlfo_get(EnvLfoState* state, uint32_t steps)
                 state->env_val = 0;
             }
         }
-        state->out_val = (int32_t)(state->env_val >> 7) * state->env_amount;
+        state->out_val = (q7_24_t)(state->env_val >> 7) * state->env_amount;
         break;
     case ENV_D:
         // in the decay or release stage
@@ -249,7 +249,7 @@ _INLINE int32_t envlfo_get(EnvLfoState* state, uint32_t steps)
             // if we are at zero, start the triangle wave LFO going down - shift the initial phase
             state->lfo_phase += TRI_SHIFT << 1;
         } else {
-            state->out_val = (int32_t)(state->env_val >> 7) * state->decay_scale;
+            state->out_val = (q7_24_t)(state->env_val >> 7) * state->decay_scale;
         }
         break;
     case ENV_S: {

@@ -14,7 +14,7 @@
 #include "decimator.h"
 
 struct {
-    uint32_t nwave; // base wavetable index, without modulation
+    q7_24_t nwave; // base wavetable index, without modulation
     uint32_t env_arate; // envelope attack
     uint32_t env_drate; // envelope decay/release
     uint16_t pitch; // last pitch value that was received
@@ -161,7 +161,7 @@ void OSC_CYCLE(const user_osc_param_t* const params, int32_t* framebuf, const ui
 
     // Calculate the wavetable index (Q7.24).
     // Index changes are updated once per block (normally, every 32 samples).
-    int32_t nwave = g_osc_params.nwave;
+    q7_24_t nwave = g_osc_params.nwave;
     // main LFO modulation
     nwave += params->shape_lfo;
     // internal envelope + LFO, updated at the last sample
@@ -267,7 +267,7 @@ void OSC_PARAM(uint16_t index, uint16_t value)
     case k_user_osc_param_shiftshape:
         // Shift+Shape: phase skew
         // breakpoint = 64 - (value/16)
-        set_skew(&g_gen_state, (1024UL - (uint32_t)value) << 21); // UQ7.25
+        set_skew(&g_gen_state, (uq7_25_t)(1024UL - (uint32_t)value) << 21); // UQ7.25
         break;
 
     default:
