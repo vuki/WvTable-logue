@@ -64,16 +64,16 @@ __fast_inline void update_frequency(uint16_t pitch)
     if (pitch == g_osc_params.pitch)
         return; // not changed
     // Calculate frequency in Hz for a given pitch number.
-    const uint8_t note = pitch >> 8; // integer part of the pitch
+    const uint16_t note = pitch >> 8; // integer part of the pitch
     const uint16_t mod = pitch & 0xFF; // fractional part of the pitch
-    float freq = osc_notehzf(note); // from lookup table
+    float freq = midi_to_hz_lut_f[note]; // from lookup table
     if (mod > 0) {
 #if 0
         // linear interpolation
-        const float f1 = osc_notehzf(note + 1);
+        const float f1 = midi_to_hz_lut_f[note + 1];
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
 #else
-        // quadratic interpolation
+        // quadratic approximation
         const float frac = (float)mod * 0.00390625f; // 1/256
         freq *= 0.00171723f * frac * frac + 0.05774266f * frac + 1.0000016f;
 #endif

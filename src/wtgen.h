@@ -103,7 +103,7 @@ _INLINE void set_skew(WtGenState* state, uint32_t bp)
 {
     if ((bp > 0) && (bp < 0x80000000)) {
         state->skew_bp = bp;
-        const float fbp = bp * Q25TOF;
+        const float fbp = (float)bp * Q25TOF;
         state->skew_r1 = 64.f / fbp;
         state->skew_r2 = 64.f / (128.f - fbp);
     } else {
@@ -161,6 +161,8 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
 
         p1 = *pwtdef++;
         w1 = *pwtdef++;
+        p2 = *pwtdef++;
+        w2 = *pwtdef++;
         for (n = 0; n < 60; n++) {
             if (n == w2) {
                 p1 = p2;
@@ -205,14 +207,14 @@ _INLINE void set_wave_number(WtGenState* state, int32_t wavenum)
     // Normalize wave number
     // wavenum is signed Q7.24 (-128..127)
     // convert to unsigned Q6.24 (0..64) with mirroring
-    const uint8_t tmp = (wavenum << 1) >> 1; // force overflow
+    const uint8_t tmp = (uint8_t)((wavenum << 1) >> 1); // force overflow
     const uint8_t sign = tmp >> 31;
-    const uint8_t norm_wavenum = (tmp ^ sign) + sign;
+    const uint8_t norm_wavenum = (tmp ^ sign) + sign; // normalized to (0..64)
 
     // Convert to floating point wavetable position, 0..61
-    const float nwave = (float)wavenum * 5.681067705154419e-08f; // * (2**-24 * 61 / 64)
-    const uint8_t nwave_i = (int)nwave; // integer part of the wave number, 0..60
-    const float nwave_f = (float)nwave - nwave_i; // fractional part of the wave number
+    const float nwave = (float)norm_wavenum * 5.681067705154419e-08f; // * (2**-24 * 61 / 64)
+    const uint8_t nwave_i = (uint8_t)nwave; // integer part of the wave number, 0..60
+    // const float nwave_f = (float)nwave - nwave_i; // fractional part of the wave number
 
     switch (state->wtnum) {
     case WT_SYNC:
@@ -275,8 +277,8 @@ _INLINE float generate_wavecycles(WtGenState* state)
     } else {
         // apply phase distortion
         const float fpos = (state->phase <= state->skew_bp)
-            ? state->skew_r1 * state->phase * Q25TOF
-            : state->skew_r2 * (state->phase - state->skew_bp) * Q25TOF + 64.f;
+            ? state->skew_r1 * (float)state->phase * Q25TOF
+            : state->skew_r2 * (float)(state->phase - state->skew_bp) * Q25TOF + 64.f;
         pos = (uint8_t)fpos;
         alpha = fpos - pos;
     }
@@ -323,17 +325,16 @@ _INLINE float generate_wavecycles(WtGenState* state)
 _INLINE float generate_wavecycles_noint(WtGenState* state)
 {
     float y;
-    uint8_t n, w11, w21;
-    uint8_t pos, pos2; // integer sample position, 0..128
-    float alpha; // fractional part of the sample position
+    uint8_t w11, w21;
+    uint8_t pos; // integer sample position, 0..128
 
     if (!state->skew_bp) {
         pos = (uint8_t)(state->phase >> 25); // UQ7
     } else {
         // apply phase distortion
         const float fpos = (state->phase <= state->skew_bp)
-            ? state->skew_r1 * state->phase * Q25TOF
-            : state->skew_r2 * (state->phase - state->skew_bp) * Q25TOF + 64.f;
+            ? state->skew_r1 * (float)state->phase * Q25TOF
+            : state->skew_r2 * (float)(state->phase - state->skew_bp) * Q25TOF + 64.f;
         pos = (uint8_t)fpos;
     }
     // get sample values from the stored waves
@@ -430,7 +431,7 @@ _INLINE float generate_wt29(WtGenState* state)
 _INLINE float generate_wt29_noint(WtGenState* state)
 {
     // wavetable 29: step wave (no antialiasing)
-    const uint8_t pos = state->phase >> 25;
+    const uint8_t pos = (uint8_t)(state->phase >> 25);
     const uint8_t edge = 64 + (uint8_t)state->alpha_w; // transition high->low
     const float y = (pos < edge) ? 32.f : -32.f;
     state->phase += state->step;
