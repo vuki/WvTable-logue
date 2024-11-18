@@ -54,13 +54,19 @@ CXXOPT := -std=c++11 -fno-rtti -fno-exceptions -fno-non-call-exceptions
 LDOPT := -Xlinker --just-symbols=$(LDDIR)/osc_api.syms
 
 CWARN := -W -Wall -Wextra
-CXXWARN :=
+CXXWARN := -W -Wall -Wextra
+# -Wconversion generates a lot of warnings in logue sdk headers
+#CWARN += -Wconversion
+#CXXWARN += -Wconversion
 
 FPU_OPTS := -mfloat-abi=hard -mfpu=fpv4-sp-d16 -fsingle-precision-constant -fcheck-new
 
 OPT := -O3 -mlittle-endian 
 OPT += $(FPU_OPTS)
-#OPT += -flto
+
+# Warning: -ffast-math may generate numerical errors!
+# see: https://kristerw.github.io/2021/10/19/fast-math/
+OPT += -ffast-math
 
 TOPT := -mthumb -mno-thumb-interwork -DTHUMB_NO_INTERWORKING -DTHUMB_PRESENT
 
