@@ -53,8 +53,8 @@ CXXOPT := -std=c++11 -fno-rtti -fno-exceptions -fno-non-call-exceptions
 
 LDOPT := -Xlinker --just-symbols=$(LDDIR)/osc_api.syms
 
-CWARN := -W -Wall -Wextra
-CXXWARN := -W -Wall -Wextra
+CWARN := -W -Wall -Wextra -Wdouble-promotion
+CXXWARN := $(CWARN)
 # -Wconversion generates a lot of warnings in logue sdk headers
 #CWARN += -Wconversion
 #CXXWARN += -Wconversion
@@ -172,7 +172,7 @@ $(ASMXOBJS) : $(OBJDIR)/%.o : %.S Makefile
 	@echo Assembling $(<F)
 	@$(CC) -c $(ASXFLAGS) -I. $(INCDIR) $< -o $@
 
-$(COBJS) : $(OBJDIR)/%.o : %.c Makefile
+$(COBJS) : $(OBJDIR)/%.o : %.c $(HEADERDEPS) Makefile
 	@echo Compiling $(<F)
 	@$(CC) -c $(CFLAGS) -I. $(INCDIR) $< -o $@
 

@@ -208,9 +208,9 @@ _INLINE void set_wave_number(WtGenState* state, q7_24_t wavenum)
     // Normalize wave number
     // wavenum is signed Q7.24 (-128..127)
     // convert to unsigned Q6.24 (0..64) with mirroring
-    const uint8_t tmp = (uint8_t)((wavenum << 1) >> 1); // force overflow
-    const uint8_t sign = tmp >> 31;
-    const uint8_t norm_wavenum = (tmp ^ sign) + sign; // normalized to (0..64)
+    const int32_t tmp = (wavenum << 1) >> 1; // force overflow
+    const int32_t sign = tmp >> 31;
+    const int32_t norm_wavenum = (tmp ^ sign) + sign; // normalized to (0..64)
 
     // Convert to floating point wavetable position, 0..61
     const float nwave = (float)norm_wavenum * 5.681067705154419e-08f; // * (2**-24 * 61 / 64)
@@ -351,7 +351,7 @@ _INLINE float generate_wavecycles_noint(WtGenState* state)
         w21 = ~state->pwave[1][posr];
     }
     // interpolate between waves
-    y = (1.f - state->alpha_w) * w11 + state->alpha_w * w21 - 127.5;
+    y = (1.f - state->alpha_w) * w11 + state->alpha_w * w21 - 127.5f;
     state->phase += state->step;
     return y;
 }
