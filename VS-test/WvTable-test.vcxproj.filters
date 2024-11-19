@@ -21,14 +21,11 @@
     <ClCompile Include="..\src\wtdef.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\src\WvTable.cpp">
+    <ClCompile Include="..\src\WvTable.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\src\adenv.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\src\compat.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -41,7 +38,10 @@
     <ClInclude Include="..\src\wtgen.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="userosc.h">
+    <ClInclude Include="..\src\envlfo.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\userosc2.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>
