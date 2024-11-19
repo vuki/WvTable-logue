@@ -199,7 +199,7 @@ _INLINE void envlfo_note_off(EnvLfoState* state)
 {
     if (state->stage == ENV_S) {
         state->stage = ENV_D;
-        state->decay_scale = (uint8_t)(state->out_val >> 24);
+        state->decay_scale = (int8_t)(state->out_val >> 24);
     } else if (state->stage == ENV_A) {
         state->stage = ENV_D;
         state->decay_scale = state->env_amount;
@@ -257,7 +257,7 @@ _INLINE q7_24_t envlfo_get(EnvLfoState* state, uint32_t steps)
         // calculate the LFO value: 2 * abs(phase) - 1
         const int32_t x = (int32_t)(state->lfo_phase);
         const int32_t mask = x >> 31;
-        const int32_t lfo_val = (x ^ mask) - mask - TRI_SHIFT; // value in Q30
+        const int32_t lfo_val = (x ^ mask) - mask - (int32_t)TRI_SHIFT; // value in Q30
         state->lfo_phase += state->lfo_step * steps;
         // scale the LFO value and add it to the envelope sustain value
         state->out_val = state->sus_val + (lfo_val >> 6) * state->lfo_amount;

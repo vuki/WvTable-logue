@@ -69,7 +69,7 @@ __fast_inline void update_frequency(uint16_t pitch)
     if (pitch == g_osc_params.pitch)
         return; // not changed
     // Calculate frequency in Hz for a given pitch number.
-    const uint16_t note = pitch >> 8; // integer part of the pitch
+    const uint8_t note = (uint8_t)(pitch >> 8); // integer part of the pitch
     const uint16_t mod = pitch & 0xFF; // fractional part of the pitch
     float freq = osc_notehzf(note); // from lookup table
     if (mod > 0) {

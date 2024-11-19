@@ -149,7 +149,7 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
         }
         break;
 
-    default:
+    default: {
         // Build wavetable indices for wave interpolation
         // entry 1: lower wave number
         // entry 2: upper wave number
@@ -188,9 +188,10 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
             state->generate = &generate_wavecycles;
         }
     }
+    }
 
     const q7_24_t last_wn = state->last_wavenum;
-    state->last_wavenum = 0xFFFFFFFF;
+    state->last_wavenum = (q7_24_t)0xFFFFFFFF;
     set_wave_number(state, last_wn); // recalculate wave number
 }
 

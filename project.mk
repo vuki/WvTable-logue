@@ -4,11 +4,11 @@
 
 PROJECT = WvTable
 
-UCSRC = ../src/wtdef.c
+UCSRC = ../src/wtdef.c ../src/WvTable.c
 
-UCXXSRC = ../src/WvTable.cpp
+UCXXSRC = 
 
-UHEADERS = wtgen.h wtdef.h adenv.h
+UHEADERS = wtgen.h wtdef.h envlfo.h decimator.h compat.h
 
 UINCDIR =
 
