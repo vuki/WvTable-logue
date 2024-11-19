@@ -10,7 +10,7 @@
         "name" : "WvTable",
         "num_param" : 6,
         "params" : [
-            ["Wavetable",    0,  60, "%"],
+            ["Wavetable",    0,  95, "%"],
             ["Env Attack",   0, 100, "%"],
             ["Env Decay",    0, 100, "%"],
             ["Env Amount", -99, 100, "%"],
