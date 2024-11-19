@@ -4,6 +4,9 @@ project(WvTable VERSION 1.0.0)
 
 add_subdirectory(JUCE)                    # If you've put JUCE in a subdirectory called JUCE
 
+set(cur_path ${CMAKE_CURRENT_SOURCE_DIR})
+cmake_path(GET cur_path PARENT_PATH parent_path)
+
 juce_add_plugin(WvTable
     # VERSION ...                               # Set this if the plugin version is different to the project version
     # ICON_BIG ...                              # ICON_* arguments specify a path to an image file to use as an icon for the Standalone
@@ -36,6 +39,8 @@ target_compile_definitions(WvTable
         JUCE_VST3_CAN_REPLACE_VST2=0)
 
 # juce_add_binary_data(AudioPluginData SOURCES ...)
+
+target_include_directories(WvTable PUBLIC ${parent_path}/src ${CMAKE_CURRENT_SOURCE_DIR})
 
 target_link_libraries(WvTable
     PRIVATE

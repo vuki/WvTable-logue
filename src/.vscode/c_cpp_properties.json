@@ -11,7 +11,8 @@
             "defines": [
                 "ARM_MATH_CM4",
                 "__ARM_FP",
-                "__GNUC__=10"
+                "__GNUC__=10",
+                "USER_TARGET_PLATFORM"
             ],
             "compilerPath": "${workspaceFolder}/../logue-sdk/tools/gcc/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-gcc",
             "cStandard": "c99",
@@ -29,7 +30,8 @@
             "defines": [
                 "ARM_MATH_CM4",
                 "__ARM_FP",
-                "__GNUC__=10"
+                "__GNUC__=10",
+                "USER_TARGET_PLATFORM"
             ],
             "compilerPath": "${workspaceFolder}/../logue-sdk/tools/gcc/gcc-arm-none-eabi-10-2020-q4-major/bin/arm-none-eabi-gcc.exe",
             "cStandard": "c99",

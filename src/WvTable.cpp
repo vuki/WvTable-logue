@@ -7,7 +7,12 @@
 
 #define OVS_2x
 
-#include <userosc.h>
+#ifdef USER_TARGET_PLATFORM
+#include <userosc.h> // Logue SDK header
+#else
+#include "userosc2.h" // compatibility header
+#endif
+
 #include "compat.h"
 #include "wtgen.h"
 #include "envlfo.h"
@@ -66,11 +71,11 @@ __fast_inline void update_frequency(uint16_t pitch)
     // Calculate frequency in Hz for a given pitch number.
     const uint16_t note = pitch >> 8; // integer part of the pitch
     const uint16_t mod = pitch & 0xFF; // fractional part of the pitch
-    float freq = midi_to_hz_lut_f[note]; // from lookup table
+    float freq = osc_notehzf(note); // from lookup table
     if (mod > 0) {
 #if 0
         // linear interpolation
-        const float f1 = midi_to_hz_lut_f[note + 1];
+        const float f1 = osc_notehzf(note + 1);
         freq = clipmaxf(linintf(mod * k_note_mod_fscale, freq, f1), k_note_max_hz);
 #else
         // quadratic approximation

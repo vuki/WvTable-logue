@@ -21,7 +21,7 @@
 #define _INLINE static inline
 #endif // #ifdef __GNUC__
 #else // #ifndef NO_FORCE_INLINE
-#define _INLINE static inline
+#define _INLINE
 #endif // #ifndef NO_FORCE_INLINE
 
 /*
