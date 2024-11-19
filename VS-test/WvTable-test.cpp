@@ -70,7 +70,7 @@ void set_env_amount(int16_t env_amount)
 
 int main(int argc, char* argv[])
 {
-	int16_t wavetable = 0;
+	int16_t wavetable = 64;
 	float wave = 12;
 	uint32_t nsamples = 512;
 	if (argc > 1) {

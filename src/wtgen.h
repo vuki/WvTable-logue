@@ -241,7 +241,7 @@ _INLINE void set_wave_number(WtGenState* state, q7_24_t wavenum)
         state->wave[1] = state->wavetable[nwave_i][1];
         state->pwave[0] = (uint8_t*)&WAVES[state->wave[0]][0];
         state->pwave[1] = (uint8_t*)&WAVES[state->wave[1]][0];
-        if (state->wtmode != WTMODE_INT2D) {
+        if (state->wtmode == WTMODE_INT2D) {
             state->alpha_w = (nwave - state->wavetable[nwave_i][2]) * WSCALER[state->wavetable[nwave_i][3] - 1];
         } else {
             // only integer wave positions
