@@ -25,7 +25,7 @@ typedef enum {
 
 typedef struct WtGenState {
     float (*generate)(struct WtGenState*); // pointer to function generating samples
-    uint8_t wavetable[64][4]; // wavetable definition
+    uint8_t wavetable[61][4]; // wavetable definition
     uint8_t wtnum; // wavetable number
     uint8_t wtmode; // wavetable mode
     uint8_t wave[2]; // numbers of the stored waves (indices into WAVES)
@@ -164,7 +164,7 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
         p2 = *pwtdef++;
         w2 = *pwtdef++;
         for (n = 0; n < 60; n++) {
-            if (n == w2) {
+            if (n == p2) {
                 p1 = p2;
                 w1 = w2;
                 p2 = *pwtdef++;
@@ -172,13 +172,13 @@ _INLINE void set_wavetable(WtGenState* state, uint8_t ntable)
             }
             state->wavetable[n][0] = w1;
             state->wavetable[n][1] = w2;
-            state->wavetable[n][2] = n - p1;
+            state->wavetable[n][2] = p1;
             state->wavetable[n][3] = p2 - p1;
         }
-        state->wavetable[60][0] = w2;
+        state->wavetable[60][0] = w1;
         state->wavetable[60][1] = w2;
-        state->wavetable[60][2] = 0;
-        state->wavetable[60][3] = 1;
+        state->wavetable[60][2] = p1;
+        state->wavetable[60][3] = p2 - p1;
 
         switch (state->wtmode) {
         case WTMODE_NOINT:
@@ -241,10 +241,11 @@ _INLINE void set_wave_number(WtGenState* state, q7_24_t wavenum)
         state->wave[1] = state->wavetable[nwave_i][1];
         state->pwave[0] = (uint8_t*)&WAVES[state->wave[0]][0];
         state->pwave[1] = (uint8_t*)&WAVES[state->wave[1]][0];
-        state->alpha_w = (nwave - state->wavetable[nwave_i][2]) * WSCALER[state->wavetable[nwave_i][3] - 1];
         if (state->wtmode != WTMODE_INT2D) {
+            state->alpha_w = (nwave - state->wavetable[nwave_i][2]) * WSCALER[state->wavetable[nwave_i][3] - 1];
+        } else {
             // only integer wave positions
-            state->alpha_w = (float)((int)state->alpha_w);
+            state->alpha_w = ((uint8_t)(nwave + 0.5f) - state->wavetable[nwave_i][2]) * WSCALER[state->wavetable[nwave_i][3] - 1];;
         }
     }
 }
