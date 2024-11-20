@@ -26,10 +26,7 @@ juce_add_plugin(WvTable
 
 juce_generate_juce_header(WvTable)
 
-target_sources(WvTable
-    PRIVATE
-        PluginEditor.cpp
-        PluginProcessor.cpp)
+target_sources(WvTable PRIVATE Plugin.cpp)
 
 target_compile_definitions(WvTable
     PUBLIC
@@ -45,6 +42,7 @@ target_include_directories(WvTable PUBLIC ${parent_path}/src ${CMAKE_CURRENT_SOU
 target_link_libraries(WvTable
     PRIVATE
         juce::juce_audio_utils
+        juce::juce_audio_processors
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
