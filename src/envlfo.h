@@ -187,8 +187,9 @@ _INLINE void envlfo_note_on(EnvLfoState* state)
         state->stage = ENV_D;
         state->env_val = FIXED_ONE;
     } else {
-        state->stage = ENV_IDLE;
+        state->stage = ENV_S;
         state->env_val = 0;
+        state->sus_val = 0;
     }
 }
 
@@ -230,9 +231,10 @@ _INLINE q7_24_t envlfo_get(EnvLfoState* state, uint32_t steps)
                 state->env_val = FIXED_ONE - (state->env_val - FIXED_ONE);
                 state->decay_scale = state->env_amount;
             } else {
-                // envelope has finished
-                state->stage = ENV_IDLE;
+                // not in hold, enter the sustain stage
+                state->stage = ENV_S;
                 state->env_val = 0;
+                state->sus_val = 0;
             }
         }
         state->out_val = (q7_24_t)(state->env_val >> 7) * state->env_amount;

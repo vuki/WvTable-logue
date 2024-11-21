@@ -99,8 +99,8 @@ void OSC_INIT(uint32_t platform, uint32_t api)
     wtgen_init(&g_gen_state, k_samplerate * OVS);
     envlfo_init(&g_mod_state, k_samplerate);
     g_osc_params.nwave = 0;
-    g_osc_params.env_arate = 0;
-    g_osc_params.env_drate = 0;
+    g_osc_params.env_arate = ENV_LUT[0];
+    g_osc_params.env_drate = ENV_LUT[0];
     g_osc_params.pitch = 0;
     g_osc_params.wt_num = 0;
     g_osc_params.env_hold = 0;
@@ -229,15 +229,15 @@ void OSC_PARAM(uint16_t index, uint16_t value)
         // Param3: wave envelope decay time (1..200)
         if (value >= 100) {
             // positive values: ASR envelope
-            g_osc_params.env_arate = ENV_LUT[value - 100];
+            g_osc_params.env_drate = ENV_LUT[value - 100];
             g_osc_params.env_hold = 1;
         } else if (value > 0) {
             // negative values: AD emvelope
-            g_osc_params.env_arate = ENV_LUT[100 - value];
+            g_osc_params.env_drate = ENV_LUT[100 - value];
             g_osc_params.env_hold = 0;
         } else {
             // value 0: disable envelope (minilogue bug)
-            g_osc_params.env_arate = ENV_LUT[0];
+            g_osc_params.env_drate = ENV_LUT[0];
             g_osc_params.env_hold = 0;
         }
         // will be applied on Note On
