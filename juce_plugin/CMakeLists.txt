@@ -26,7 +26,7 @@ juce_add_plugin(WvTable
 
 juce_generate_juce_header(WvTable)
 
-target_sources(WvTable PRIVATE Plugin.cpp)
+target_sources(WvTable PRIVATE Plugin.cpp ../src/WvTable.c ../src/wtdef.c)
 
 target_compile_definitions(WvTable
     PUBLIC
