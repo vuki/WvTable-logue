@@ -139,8 +139,8 @@ void OSC_NOTEON(const user_osc_param_t* const params)
 }
 
 /*
-    OSC_NOTEON
-    Called when a note is started.
+    OSC_NOTEOFF
+    Called when a note is released.
     params.pitch: note pitch, UQ8.8.
 */
 
