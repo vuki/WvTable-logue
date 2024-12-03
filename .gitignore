@@ -7,3 +7,5 @@ ttt.*
 *.ttt
 /juce_plugin/JUCE
 /juce_plugin/build
+/testmodule/*.wav
+__pycache__
