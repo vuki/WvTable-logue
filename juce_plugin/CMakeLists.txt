@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.22)
 
 project(WvTable VERSION 1.0.0)
 
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+
 add_subdirectory(JUCE)                    # If you've put JUCE in a subdirectory called JUCE
 
 set(cur_path ${CMAKE_CURRENT_SOURCE_DIR})
