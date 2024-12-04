@@ -70,7 +70,7 @@ In Mode 3, the wavecycles are selected the same way as in the Mode 2, but additi
 
 # Wavetable index modulation
 
-The wavetable index is set by the use, bit it can also modulated during the sound production, which allows for dynamic changes in timbre. The index may be modulated:
+The wavetable index is set by the user, but it can also modulated during the sound production, which allows for dynamic changes in timbre. The index may be modulated:
 
 - manually, with the _Shape_ knob,
 - manually, with the joystick or any MIDI controller assigned to the _Shape_ parameter,
@@ -78,22 +78,22 @@ The wavetable index is set by the use, bit it can also modulated during the soun
 - with the additional, triangular LFO in the oscillator,
 - with the simple envelope generator in the oscillator.
 
-The effect of all the oscillators is cumulative.
+The effect of all modulators is cumulative.
 
 It is possible that the modulated wavetable index will go beyond the range 0 to 61. In this case, the values outside this range are mirrored (folded). For example, 62 becomes 60, -3 becomes 3, etc. This allows for more drastic timbre changes if the modulation depth is high.
 
 
 ## Wavetable index envelope
 
-The oscillator has a simple, two-stage (attack-decay, AD) envelope for wave number modulation. Depending on the settings, it may operate as an AD (_attack-decay_) or ASR (_attack-sustain-release_) envelope. The envelope generator has three parameters: the _attack time_, the _decay/release time_ and the _amount_ (which may be positive or negative). 
+The oscillator has a simple, two-stage envelope for wave number modulation. Depending on the settings, it may operate as an AD (_attack-decay_) or ASR (_attack-sustain-release_) envelope. The envelope generator has three parameters: the _attack time_, the _decay/release time_ and the _amount_ (which may be positive or negative). 
 
 The AD envelope is used if the _decay/release time_ parameter is negative - the absolute value of this parameter is the decay time. At the _Note On_ event, the envelope is activated, the wavetable index changes from the base value (set with the _Shape_ controller) to (base + amount) in the attack time, then it immediately goes back to the base value in the decay time.
 
 The ADS envelope is used if the _decay/release time_ parameter is positive or zero. At the _Note On_ event, the envelope is activated, the wavetable index changes from the base value to (base + amount) in the attack time, and stays at this level. At the _Note Off_ event, the index goes back to the base value in the release time.
 
-The amount is expressed in wavetable positions, the maximum modulation is ±100 wave numbers. Due to the way the _Minilogue xd_ works, when the oscillator is loaded into memory, the display shows that the amount  value is -99%, but the actual value is 0.
+The amount is expressed in wavetable index, the maximum modulation is ±100 wavetable positions. Due to the way the _Minilogue xd_ works, when the oscillator is loaded into memory, the display shows that the amount  value is -99%, but the actual value is 0.
 
-The attack and the decay/release times can be set as parameter values 0-100, which corresponds to the range 0 to almost 10 seconds, and the relation is exponential (see the table below). The exact equation is: $time = 0.1 * exp(0.046 * param)$. Either time may be zero, in that case the envelope transitions to the next stage immediately. If both times are set to zero, the envelope does not run.
+The attack and the decay/release times can be set as parameter values 0-100, corresponding to the range 0 to almost 10 seconds, and the relation is exponential (see the table below). The exact equation is: $time = 0.1 * exp(0.046 * param)$. Either section time may be zero, in that case the envelope transitions to the next stage immediately. If both times are set to zero, the envelope does not run.
 
 | Parameter value           |    0 |   35 |   50 |   65 |   85 |  100 |
 | ------------------------- | ---: | ---: | ---: | ---: | ---: | ---: |
@@ -102,11 +102,11 @@ The attack and the decay/release times can be set as parameter values 0-100, whi
 
 ## Wavetable index modulation with LFO & LFO2
 
-A low frequency oscillator (LFO) may be used for a cyclic modulation of the wave number. There are two LFOs available: the main one from the synthesizer, and an additional one (LFO2) in the oscillator. Both LFOs may be used at the same time.
+A low frequency oscillator (LFO) may be used for a cyclic modulation of the wavetable index. There are two LFOs available: the main one from the synthesizer, and an additional one (LFO2) in the oscillator. Both LFOs may be used at the same time.
 
-If the main LFO of the instrument is routed to the Shape parameter, it is used by the oscillator to modulate the wave number, according to the _Rate_ and _Intensity_ values set with the instrument knobs. The maximum modulation range is near 128 wavetable positions. The main LFO influences the wavetable index value for the whole duration of the sound.
+If the main LFO of the instrument is routed to the Shape parameter, it is used by the oscillator to modulate the wavetable index, according to the _Rate_ and _Intensity_ values set with the instrument knobs. The maximum modulation range is near 128 wavetable positions. The main LFO influences the wavetable index value for the whole duration of the sound.
 
-A supplementary LFO2 is available in the oscillator. This LFO uses a triangular wave only. Activating the LFO2 for the wave number modulation allows using the main LFO for the cutoff or pitch modulation. Contrary to the main LFO, the LFO2 influences the wavetable index __only if the envelope is not in the attack or the decay/release stage__. In the AD envelope, the LFO2 is active after the decay phase finishes. In the ASR envelope, the LFO2 is active after the attack phase is completed. Note: if the envelope attack time is nonzero, the LFO is effectively delayed, even if the envelope amount is zero.
+A supplementary LFO2 is available in the oscillator. This LFO uses a triangular wave only. Activating the LFO2 for the waveyable index modulation allows using the main LFO for the cutoff or pitch modulation. Contrary to the main LFO, the LFO2 influences the wavetable index __only if the envelope is not in the attack or the decay/release stage__. In the AD envelope, the LFO2 is active after the decay phase finishes. In the ASR envelope, the LFO2 is active after the attack phase is completed. Note: if the envelope attack time is nonzero, the LFO is effectively delayed, even if the envelope amount is zero.
 
 The LFO2 is controlled by two parameters: _rate_ (LFO frequency) and _amount_ (LFO amplitude), both set as parameter values 0 to 100. For the LFO amount, the value is scaled in wavetable positions. The LFO rate can be set in the range 0-20 Hz, and the relation is exponential, as shown in the table below.
 
@@ -132,8 +132,8 @@ Skew has no effect on the wavetables 28 (sync) and 29 (step), as they do not use
 
 There are two main causes of the synthetic sound distortion.
 
-1. _Interpolation errors_. Interpolation is reading wave samples or waves from the wavetable at positions that are not integers. The original _PPG Wave_ oscillators did not use any interpolation in these cases – fractional part of the position was simply truncated. Because there are only 128 samples per cycle, and the samples are stored with 8-bit resolution, the resulting wave shape is not smooth, it is more a piecewise-linear function. This results in adding frequency components to the signal. The higher the wave frequency, the higher the level of distortion.
-2. _Aliasing_. Pitch shifting upwards of the waves read from memory causes the frequency components to go above the half of the sampling rate, resulting in aliasing, which has similar character of distortion to the interpolation errors. Unconfirmed sources say that the original _PPG Wave_ oscillator used about 195 kHz sampling rate, which limited the aliasing distortion to some degree. Still, they are clearly audible for higher pitches, especially for waves with rich frequency content.
+1. _Interpolation errors_. Interpolation is reading wave samples or waves from the wavetable at positions that are not integers. The original _PPG Wave_ oscillators did not use any interpolation in these cases – fractional part of the position was simply truncated. Because there are only 128 samples per cycle, and the samples are stored with 8-bit resolution, the resulting wave shape is not smooth, but rather stepped. This results in adding frequency components to the signal. The higher the wave frequency, the higher the level of distortion.
+2. _Aliasing_. Pitch shifting upwards of the waves read from memory may cause the frequency components to go above the half of the sampling rate, resulting in aliasing, which has similar character of distortion to the interpolation errors. Unconfirmed sources say that the original _PPG Wave_ oscillator used about 195 kHz sampling rate, which limited the aliasing distortion to some degree. Still, they are clearly audible for higher pitches, especially for waves with rich frequency content.
 
 In this implementation of the wavetable oscillator, the first problem is partially mitigated by applying a linear interpolation when samples are read from non-integer positions, as well as when reading wavetables at non-integer positions (which was not possible in the original oscillator). As a result, the produced wave is smoother, with reduced audible distortion. Modes 2 and 3 disable the interpolation, so the distortion is more audible.
 
@@ -161,7 +161,7 @@ logue-cli load -u WvTable.mnlgxdunit -s #
 
 The GitHub repository contains a minimized version of `logue-sdk`. To build the oscillator, you only need a supported compiler (GCC for ARM), as well as `make` and `zip` utilities installed.
 
-Scripts in the `logue-sdk/tools/gcc_ directory` download the compiler, version `gcc-arm-none-eabi-10-2020-q4-major`. This version was tested by the author, but other GCC versions should work as well.
+Scripts in the `logue-sdk/tools/gcc`_ directory download the compiler, version `gcc-arm-none-eabi-10-2020-q4-major`. This version was tested by the author, but other GCC versions should work as well.
 
 Building the oscillator requires only issuing the `make install` command in the main directory of the repository. All three binaries for the supported synthesizers should be created in this directory.
 
@@ -176,7 +176,7 @@ make install GCC_BIN_PATH=../../gcc-arm-none-eabi-10-2020-q4-major/bin
 
 The software is licensed under the terms of the GNU General Public License v3.0. See the LICENSE.md file for details.
 
-The data contained in the _wtdef.c_ file was extracted from the _PPG Wave 2.3_ ROM, publicly available on the Internet. The author of the project does not claim any rights to this data. According to the author's knowledge, this data is not protected by any active patents. In the post on the KVR forum made in June 2011, Hermann Seib stated that "... the wavetables that have been copied from the PPG range of synthesizers. These, as I've been assured by Wolfgang Palm, are not protected in any way" ([source](https://www.kvraudio.com/forum/viewtopic.php?t=321167)).
+The data contained in the _wtdef.c_ file was extracted from the _PPG Wave 2.3_ ROM, publicly available on the Internet. The author of the project does not claim any rights to this data. According to the author's knowledge, this data is not protected by any active patents. In the post on the KVR forum made in June 2011, Hermann Seib stated that "... the wavetables that have been copied from the PPG range of synthesizers (...), as I've been assured by Wolfgang Palm, are not protected in any way" ([source](https://www.kvraudio.com/forum/viewtopic.php?t=321167)).
 
 # References
 
