@@ -2,8 +2,8 @@
 # logue-sdk Oscillator Makefile
 # #############################################################################
 
-#SUBDIRS = minilogue-xd prologue nutekt-digital
-SUBDIRS = minilogue-xd
+SUBDIRS = minilogue-xd prologue nutekt-digital
+#SUBDIRS = minilogue-xd
 
 default: all
 
